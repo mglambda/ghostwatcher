@@ -3,5 +3,8 @@
 import ghostbox
 import argparse
 
-def main():
+from .types import *
+from .extraction import *
+
+def main() -> None:
     pass
