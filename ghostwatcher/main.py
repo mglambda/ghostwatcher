@@ -12,7 +12,7 @@ from loguru import logger
 from .types import *
 from .extraction import KeyFrameExtractor
 
-def describe_frames(video_filepath: str, work_directory_filepath: str, box: Ghostbox) -> FrameCollection:
+def describe_frames(frame_collection: FrameCollection, work_directory_filepath: str, box: Ghostbox, llm_config: LLMConfig) -> FrameCollection:
     pass
 
 def setup_logging(debug: bool, log_timestamps: bool) -> None:
@@ -44,6 +44,8 @@ def main() -> None:
         default=Path("./output"),
         help="Directory where output descriptions will be stored."
     )
+
+    
     parser.add_argument(
         "-w", "--work-directory",
         type=Path,
@@ -56,6 +58,13 @@ def main() -> None:
         default=ExtractionStrategy.keyframes,
         help="Strategy for extracting frames from the video."
     )
+
+    parser.add_argument(
+        "-c", "--character-folder",
+        type=str,
+        default="ghost",
+        help="Character folders contain the system message and configuration options for ghostbox and the LLM backend."
+    )    
 
     parser.add_argument(
         "-b",
@@ -145,18 +154,29 @@ def main() -> None:
             case _ as unreachable: 
                 assert_never(unreachable)
 
+    # we have the images, now let's bundle them in a collection
+    frame_collection = FrameCollection.from_directory(extraction_output_dir, args.video_file)
+    logger.info(f"Extracted {len(frame_collection.frames)} images from {frame_collection.video_filepath}.")
+    
     # 2. step: description generation
     logger.info(f"Setting up ghostbox with {args.backend} backend.")
     box = Ghostbox(
-        character_folder = "ghost",
+        character_folder = args.character_folder,
         backend = args.backend,
         endpoint = args.endpoint,
         stdout = False,
         stderr = args.debug
     )
 
-    
-    
+    llm_config = LLMConfig(
+        batch_size=args.batch_size,
+        description_prompt=args.description_prompt
+    )
+    logger.debug(f"LLM Configuration: {llm_config.model_dump_json(indent=2)}")
+
+    # 3. step: describe frames
+    frame_collection = describe_frames(frame_collection, str(work_dir), box, llm_config)
+
     # Explicitly clean up temporary directory if one was created
     if temp_dir_obj:
         temp_dir_obj.cleanup()

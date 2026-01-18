@@ -61,4 +61,39 @@ class FrameCollection(BaseModel):
         description = "The frames, in chronological order, that were extracted from the video."
     )
 
+    @staticmethod
+    def from_directory(extraction_output_dir: str, video_filepath: str) -> 'FrameCollection':
+        """Create a new framecollection with empty metadata by loading all images from a directory in alphabetical order."""
+        from pathlib import Path
 
+        output_path = Path(extraction_output_dir)
+        image_files = []
+        for f in output_path.iterdir():
+            if f.is_file() and f.suffix.lower() in ['.png', '.jpg', '.jpeg']:
+                image_files.append(f)
+
+        # Sort files alphabetically to maintain chronological order
+        image_files.sort()
+
+        frames = [
+            FrameImage(filepath=str(img_file))
+            for img_file in image_files
+        ]
+
+        return FrameCollection(
+            video_filepath=video_filepath,
+            frames=frames
+        )
+
+class LLMConfig(BaseModel):
+    """Configuration parameters for the image description generation that are used with the LLM backend."""
+
+    batch_size: int = Field(
+        default = 3,
+        description = "How many images to describe in one batch. A higher batch size gives better results because the LLM will have more images in context simultaneously, but also requires substantially more memory and processing time."
+    )
+    
+    description_prompt: str = Field(
+        default = "Describe the image.",
+        description = "Prompt used for basic image descriptions."
+    )
