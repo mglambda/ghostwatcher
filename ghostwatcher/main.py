@@ -9,10 +9,13 @@ from ghostbox import Ghostbox
 
 from loguru import logger
 
-from .types import ExtractionStrategy, ImageExtractor, ImageExtractorConfig
+from .types import *
 from .extraction import KeyFrameExtractor
 
-def setup_logging(debug: bool, log_timestamps: bool):
+def describe_frames(video_filepath: str, work_directory_filepath: str, box: Ghostbox) -> FrameCollection:
+    pass
+
+def setup_logging(debug: bool, log_timestamps: bool) -> None:
     """Configures loguru logger based on debug and timestamp flags."""
     logger.remove()  # Remove default handler
 
@@ -22,7 +25,7 @@ def setup_logging(debug: bool, log_timestamps: bool):
         log_format = "<green>{time}</green> | " + log_format
 
     logger.add(sys.stderr, level=log_level, format=log_format)
-
+    
 def main() -> None:
     """Main entry point for the ghostwatcher command-line interface."""
     parser = argparse.ArgumentParser(description="Multimodal AI powered video description and commentary.")
@@ -95,7 +98,7 @@ def main() -> None:
     setup_logging(args.debug, args.log_timestamps)
 
     # Handle work directory
-    temp_dir_obj: Optional[tempfile.TemporaryDirectory] = None
+    temp_dir_obj: Optional[tempfile.TemporaryDirectory] = None # type: ignore
     if args.work_directory:
         work_dir = args.work_directory
         work_dir.mkdir(parents=True, exist_ok=True)
@@ -143,6 +146,16 @@ def main() -> None:
                 assert_never(unreachable)
 
     # 2. step: description generation
+    logger.info(f"Setting up ghostbox with {args.backend} backend.")
+    box = Ghostbox(
+        character_folder = "ghost",
+        backend = args.backend,
+        endpoint = args.endpoint,
+        stdout = False,
+        stderr = args.debug
+    )
+
+    
     
     # Explicitly clean up temporary directory if one was created
     if temp_dir_obj:
