@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Optional, assert_never
 
 import ghostbox
+from ghostbox import Ghostbox
+
 from loguru import logger
 
 from .types import ExtractionStrategy, ImageExtractor, ImageExtractorConfig
@@ -45,12 +47,32 @@ def main() -> None:
         help="Temporary work directory for storing intermediate files (e.g., images). If omitted, a temporary directory will be created."
     )
     parser.add_argument(
-        "-e", "--extraction-strategy",
+        "-x", "--extraction-strategy",
         type=ExtractionStrategy,
         choices=list(ExtractionStrategy),
         default=ExtractionStrategy.keyframes,
         help="Strategy for extracting frames from the video."
     )
+
+    parser.add_argument(
+        "-b",
+        "--backend",
+        type=str,
+        choices=[backend.name for _, backend in enumerate(ghostbox.LLMBackend)],
+        default="generic",
+        help="Choose the backend for the multimodal AI to use. If you want to use a local AI, choose the generic or llamacpp backends. If you use another backend, such as from a cloud provider like google or deepseek, you may need to set the appropriate environment variables for credentials. Some backends allow you to set the http address to query for the API requests via the --endpoint option, such as the generic, openai, and llamacpp backends. Cloud provider backends such as google and deepseek have the endpoint built-in, and won't allow you to change it.",
+    )
+
+    parser.add_argument(
+        "-e",
+        "--endpoint",
+        type=str,
+        default="http://localhost:8080",
+        help="The HTTP endpoint to query. The default is compatible with llama.cpp's llama-server out of the box. When using the generic backend, it will expect an OpenAI compatible API at this address."
+    )    
+    
+
+    
     parser.add_argument(
         "--debug",
         action=argparse.BooleanOptionalAction,
@@ -60,6 +82,11 @@ def main() -> None:
         "--log-timestamps",
         action=argparse.BooleanOptionalAction,
         help="Enable timestamps in log output."
+    )
+    parser.add_argument(
+        "-f", "--force-frame-extraction",
+        action=argparse.BooleanOptionalAction,
+        help="Force frame extraction even if the output directory is not empty."
     )
 
     args = parser.parse_args()
@@ -86,26 +113,34 @@ def main() -> None:
     logger.debug(f"Work directory: {work_dir}")
     logger.debug(f"Extraction strategy: {args.extraction_strategy}")
     logger.debug(f"Log timestamps enabled: {args.log_timestamps}")
+    logger.debug(f"Force frame extraction: {args.force_frame_extraction}")
 
     # 1. step: extraction of images
     extractor: ImageExtractor
     extraction_output_dir = work_dir / "extracted_frames"
     extraction_output_dir.mkdir(parents=True, exist_ok=True)
 
-    match args.extraction_strategy:
-        case ExtractionStrategy.keyframes:
-            extractor = KeyFrameExtractor()
-            extractor.process(
-                video_filepath=args.video_file,
-                output_directory_filepath=str(extraction_output_dir),
-                config=ImageExtractorConfig(use_keyframes=True)
-            )
-        case ExtractionStrategy.interval:
-            # TODO: Implement IntervalExtractor
-            logger.warning("Interval extraction not yet implemented.")
-            pass
-        case _ as unreachable: 
-            assert_never(unreachable)
+    # Check if extraction can be skipped
+    skip_extraction = False
+    if not args.force_frame_extraction and any(extraction_output_dir.iterdir()):
+        logger.info(f"Skipping frame extraction: '{extraction_output_dir}' is not empty. Use --force-frame-extraction to override.")
+        skip_extraction = True
+
+    if not skip_extraction:
+        match args.extraction_strategy:
+            case ExtractionStrategy.keyframes:
+                extractor = KeyFrameExtractor()
+                extractor.process(
+                    video_filepath=args.video_file,
+                    output_directory_filepath=str(extraction_output_dir),
+                    config=ImageExtractorConfig(use_keyframes=True)
+                )
+            case ExtractionStrategy.interval:
+                # TODO: Implement IntervalExtractor
+                logger.warning("Interval extraction not yet implemented.")
+                pass
+            case _ as unreachable: 
+                assert_never(unreachable)
 
     # 2. step: description generation
     
