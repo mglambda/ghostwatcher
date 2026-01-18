@@ -84,7 +84,8 @@ def main() -> None:
     logger.debug(f"Video file: {args.video_file}")
     logger.debug(f"Output directory: {args.output_directory}")
     logger.debug(f"Work directory: {work_dir}")
-    logger.debug(f"Extraction strategy: {args.extr    logger.debug(f"Log timestamps enabled: {args.log_timestamps}")
+    logger.debug(f"Extraction strategy: {args.extraction_strategy}")
+    logger.debug(f"Log timestamps enabled: {args.log_timestamps}")
 
     # 1. step: extraction of images
     extractor: ImageExtractor
@@ -103,14 +104,12 @@ def main() -> None:
             # TODO: Implement IntervalExtractor
             logger.warning("Interval extraction not yet implemented.")
             pass
-        case _: # Should be exhaustive due to StrEnum choices
-            assert_never(args.extraction_strategy)
+        case _ as unreachable: 
+            assert_never(unreachable)
 
     # 2. step: description generation
     
     # Explicitly clean up temporary directory if one was created
-    if temp_dir_obj:
-        temp_dir_obj.cleanup() one was created
     if temp_dir_obj:
         temp_dir_obj.cleanup()
 
