@@ -88,9 +88,10 @@ def main() -> None:
     logger.debug(f"Debug enabled: {args.debug}")
     logger.debug(f"Log timestamps enabled: {args.log_timestamps}")
 
-    # Placeholder for future logic
-    logger.info("CLI skeleton initialized. Further processing logic will go here.")
+    # 1. step: extraction of images
 
+    # 2. step: description generation
+    
     # Explicitly clean up temporary directory if one was created
     if temp_dir_obj:
         temp_dir_obj.cleanup()
