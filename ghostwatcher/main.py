@@ -101,6 +101,19 @@ def main() -> None:
         help="Force frame extraction even if the output directory is not empty."
     )
 
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=LLMConfig.model_fields["batch_size"].default,
+        help="How many images to describe in one batch. A higher batch size gives better results because the LLM will have more images in context simultaneously, but also requires substantially more memory and processing time."
+    )
+    parser.add_argument(
+        "--description-prompt",
+        type=str,
+        default=LLMConfig.model_fields["description_prompt"].default,
+        help="Prompt used for basic image descriptions."
+    )
+
     args = parser.parse_args()
 
     # Setup logging
