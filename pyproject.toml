@@ -14,7 +14,8 @@ license = { file = "LICENSE" }
 dependencies = [
     "pydantic",
     "shutils",
-    "ghostbox"
+    "ghostbox",
+    "loguru"
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

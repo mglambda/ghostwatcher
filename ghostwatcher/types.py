@@ -3,7 +3,11 @@
 
 from typing import *
 from pydantic import BaseModel, Field
+from enum import StrEnum
 
+class ExtractionStrategy(StrEnum):
+    keyframes = "keyframes"
+    interval = "interval"
 
 class ImageExtractorConfig(BaseModel):
     """Config object containing parameters for various extraction functions.
