@@ -2,6 +2,7 @@ import argparse
 import sys
 import tempfile
 from pathlib import Path
+from copy import deepcopy
 from typing import Optional, assert_never
 
 import ghostbox
@@ -13,8 +14,30 @@ from .types import *
 from .extraction import KeyFrameExtractor
 
 def describe_frames(frame_collection: FrameCollection, work_directory_filepath: str, box: Ghostbox, llm_config: LLMConfig) -> FrameCollection:
-    pass
+    """Fills in the description for all frames in the frame collection using multimodal AI, based on an LLM configuration."""
+    # we don't alter the old collection, but construct a new one
+    new_frame_collection = deepcopy(frame_collection)
+    new_frame_collection.frames = []
+    
+    frame_count = len(frame_collection.frames)
+    for i in range(frame_count):
+        frame = deepcopy(frame_collection.frames[i])
+        logger.info(f"Generating description for frame {i} of {frame_count}.")
+        # FIXME: for now we are assuming batch_size == 1        
+        context_images = [frame.filepath]
+        try:
+            box.clear_history()
+            with box.images(context_images):
+                frame.description = box.text(
+                    llm_config.description_prompt
+                )
+        except Exception as e:
+            logger.error(f"Failed to describe frame {i}: {e}")
 
+        new_frame_collection.frames.append(frame)
+    return new_frame_collection
+
+    
 def setup_logging(debug: bool, log_timestamps: bool) -> None:
     """Configures loguru logger based on debug and timestamp flags."""
     logger.remove()  # Remove default handler
@@ -188,8 +211,16 @@ def main() -> None:
     logger.debug(f"LLM Configuration: {llm_config.model_dump_json(indent=2)}")
 
     # 3. step: describe frames
-    frame_collection = describe_frames(frame_collection, str(work_dir), box, llm_config)
+    described_frame_collection = describe_frames(frame_collection, str(work_dir), box, llm_config)
+    logger.info("Finished frame descriptions.")
 
+
+    # temporary for development - just output the descriptions
+    print(f"=== OUTPUT ===")
+    for i, frame in enumerate(described_frame_collection.frames):
+        print(f"# {i}:")
+        print(frame.description)
+        
     # Explicitly clean up temporary directory if one was created
     if temp_dir_obj:
         temp_dir_obj.cleanup()
