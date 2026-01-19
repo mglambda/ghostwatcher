@@ -44,6 +44,11 @@ class FrameImage(BaseModel):
     filepath: str = Field(
         description = "The filepath to this frame's image file."
     )
+
+    seek_pos: float = Field(
+        default = -1.0,
+        description = "The time position in seconds at which this frame occurs in the video. Negative values indicate that the position could not be determined."
+    )
     
     description: Optional[str] = Field(
         default = None,

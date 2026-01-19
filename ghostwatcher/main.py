@@ -22,7 +22,7 @@ def describe_frames(frame_collection: FrameCollection, work_directory_filepath: 
     frame_count = len(frame_collection.frames)
     for i in range(frame_count):
         frame = deepcopy(frame_collection.frames[i])
-        logger.info(f"Generating description for frame {i} of {frame_count}.")
+        logger.info(f"Generating description for frame {i+1} of {frame_count}.")
         # FIXME: for now we are assuming batch_size == 1        
         context_images = [frame.filepath]
         try:
@@ -191,7 +191,7 @@ def main() -> None:
                 assert_never(unreachable)
 
     # we have the images, now let's bundle them in a collection
-    frame_collection = FrameCollection.from_directory(extraction_output_dir, args.video_file)
+    frame_collection = FrameCollection.from_directory(extraction_output_dir, str(args.video_file))
     logger.info(f"Extracted {len(frame_collection.frames)} images from {frame_collection.video_filepath}.")
     
     # 2. step: description generation
