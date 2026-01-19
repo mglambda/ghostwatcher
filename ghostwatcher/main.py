@@ -170,9 +170,15 @@ def main() -> None:
 
     # Check if extraction can be skipped
     skip_extraction = False
-    if not args.force_frame_extraction and any(extraction_output_dir.iterdir()):
-        logger.info(f"Skipping frame extraction: '{extraction_output_dir}' is not empty. Use --force-frame-extraction to override.")
-        skip_extraction = True
+    if any(extraction_output_dir.iterdir()):
+        if args.force_frame_extraction:
+            logger.info(f"Force frame extraction: clearing existing frames in '{extraction_output_dir}'.")
+            for f in extraction_output_dir.iterdir():
+                if f.is_file():
+                    f.unlink()
+        else:
+            logger.info(f"Skipping frame extraction: '{extraction_output_dir}' is not empty. Use --force-frame-extraction to override.")
+            skip_extraction = True
 
     if not skip_extraction:
         match args.extraction_strategy:
@@ -218,7 +224,7 @@ def main() -> None:
     # temporary for development - just output the descriptions
     print(f"=== OUTPUT ===")
     for i, frame in enumerate(described_frame_collection.frames):
-        print(f"# {i}:")
+        print(f"# {i} at {frame.seek_pos}s:")
         print(frame.description)
         
     # Explicitly clean up temporary directory if one was created

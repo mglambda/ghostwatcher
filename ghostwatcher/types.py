@@ -70,6 +70,7 @@ class FrameCollection(BaseModel):
     def from_directory(extraction_output_dir: str, video_filepath: str) -> 'FrameCollection':
         """Create a new framecollection with empty metadata by loading all images from a directory in alphabetical order."""
         from pathlib import Path
+        import re
 
         output_path = Path(extraction_output_dir)
         image_files = []
@@ -80,10 +81,21 @@ class FrameCollection(BaseModel):
         # Sort files alphabetically to maintain chronological order
         image_files.sort()
 
-        frames = [
-            FrameImage(filepath=str(img_file))
-            for img_file in image_files
-        ]
+        frames = []
+        for img_file in image_files:
+            seek_pos = -1.0
+            # Try to extract timestamp from filename (e.g., frame-0001-ts-12.345.png)
+            ts_match = re.search(r"-ts-([\d\.]+)", img_file.stem)
+            if ts_match:
+                try:
+                    seek_pos = float(ts_match.group(1))
+                except ValueError:
+                    pass
+            
+            frames.append(FrameImage(
+                filepath=str(img_file),
+                seek_pos=seek_pos
+            ))
 
         return FrameCollection(
             video_filepath=video_filepath,

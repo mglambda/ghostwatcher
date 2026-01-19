@@ -17,14 +17,14 @@ class KeyFrameExtractor:
 
         # ffmpeg command to extract keyframes
         # -i: input file
-        # -vf "select=eq(pict_type\\,I)": video filter to select only I-frames (keyframes)
+        # -vf "select=eq(pict_type\\,I),showinfo": video filter to select only I-frames (keyframes) and show metadata
         # -vsync vfr: variable frame rate, important to avoid duplicating frames
         # -q:v 2: quality for video output (images), 2 is good quality
         # frame-%04d.png: output pattern for image files (e.g., frame-0001.png)
         command = [
             "ffmpeg",
             "-i", str(video_filepath),
-            "-vf", "select=eq(pict_type\\,I)",
+            "-vf", "select=eq(pict_type\\,I),showinfo",
             "-vsync", "vfr",
             "-q:v", "2",
             str(output_path / "frame-%04d.png")
@@ -35,7 +35,28 @@ class KeyFrameExtractor:
             # check=True will raise a CalledProcessError if the command returns a non-zero exit code
             result = subprocess.run(command, check=True, capture_output=True, text=True)
             logger.info(f"Keyframe extraction completed successfully for {video_filepath}.")
-            logger.debug(f"FFmpeg stdout:\n{result.stdout}")
+            
+            # Parse timestamps from showinfo output in stderr
+            import re
+            timestamps = []
+            # Look for lines like: [Parsed_showinfo_0 @ 0x...] n:   0 pts:      0 pts_time:0 ...
+            for line in result.stderr.splitlines():
+                if "pts_time:" in line:
+                    match = re.search(r"pts_time:([\d\.]+)", line)
+                    if match:
+                        timestamps.append(match.group(1))
+            
+            # Rename files to include timestamps
+            for i, ts in enumerate(timestamps):
+                frame_num = i + 1
+                old_filename = f"frame-{frame_num:04d}.png"
+                new_filename = f"frame-{frame_num:04d}-ts-{float(ts)}.png"
+                old_file = output_path / old_filename
+                new_file = output_path / new_filename
+                if old_file.exists():
+                    old_file.rename(new_file)
+                    logger.debug(f"Renamed {old_filename} to {new_filename}")
+
             if result.stderr:
                 logger.debug(f"FFmpeg stderr:\n{result.stderr}")
         except subprocess.CalledProcessError as e:
