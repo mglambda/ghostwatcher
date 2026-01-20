@@ -3,6 +3,7 @@
 
 from typing import *
 import re
+import json
 from pydantic import BaseModel, Field
 from enum import StrEnum
 from pathlib import Path
@@ -100,6 +101,14 @@ class FrameCollection(BaseModel):
 
         return FrameCollection(video_filepath=video_filepath, frames=frames)
 
+    def save(self, filepath: Path) -> None:
+        """Save the frame collection to a JSON file."""
+        filepath.write_text(self.model_dump_json(indent=2))
+
+    @staticmethod
+    def load(filepath: Path) -> "FrameCollection":
+        """Load a frame collection from a JSON file."""
+        return FrameCollection.model_validate_json(filepath.read_text())
 
 class LLMConfig(BaseModel):
     """Configuration parameters for the image description generation that are used with the LLM backend."""
