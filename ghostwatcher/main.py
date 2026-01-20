@@ -20,12 +20,17 @@ def describe_frames(
 ) -> FrameCollection:
     """Fills in the description for all frames in the frame collection using multimodal AI, based on an LLM configuration."""
     # we don't alter the old collection, but construct a new one
+    # this isn't strictly necessary right now, but may allow us to e.g. look up old descriptions in the future, so don't refactor this
     new_frame_collection = deepcopy(frame_collection)
     new_frame_collection.frames = []
 
     frame_count = len(frame_collection.frames)
     for i in range(frame_count):
         frame = deepcopy(frame_collection.frames[i])
+        if frame.description:
+            logger.info(f"Frame {i+1} of {frame_count} already described. Skipping.")
+            continue
+        
         logger.info(f"Generating description for frame {i+1} of {frame_count}.")
         prompt = ""
         b = llm_config.batch_size
@@ -55,6 +60,9 @@ def describe_frames(
             logger.error(f"Failed to describe frame {i}: {e}")
 
         new_frame_collection.frames.append(frame)
+        # save intermediate progress
+        new_frame_collection.save(prog.get_frame_collection_path())
+        
     return new_frame_collection
 
 
@@ -140,13 +148,20 @@ def main() -> None:
         action=argparse.BooleanOptionalAction,
         help="Enable timestamps in log output.",
     )
+    
     parser.add_argument(
-        "-f",
         "--force-frame-extraction",
         action=argparse.BooleanOptionalAction,
-        help="Force frame extraction even if the output directory is not empty.",
+        help="Force frame extraction even if the output directory is not empty. This implies --force-frame-description.",
     )
 
+
+    parser.add_argument(
+        "--force-frame-description",
+        action=argparse.BooleanOptionalAction,
+        help="Force regeneration of frame collection descriptions.",
+    )
+    
     parser.add_argument(
         "--batch-size",
         type=int,
@@ -161,6 +176,9 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+    # ensure logical consistency with the forcing
+    if args.force_frame_extraction:
+        args.force_frame_description = True
 
     # Setup logging
     setup_logging(args.debug, args.log_timestamps)
@@ -235,25 +253,42 @@ def main() -> None:
                 case _ as unreachable:
                     assert_never(unreachable)
 
-        # we have the images, now let's bundle them in a collection
-        frame_collection = FrameCollection.from_directory(
-            extraction_output_dir, str(args.video_file)
-        )
     except Exception as e:
         logger.error(f"Failed to extract images. Reason: {e}")
         sys.exit(1)
+        
+    try:
+        # constructa frame collection, either from extracted images or from a previously saved collection
+        frame_collection_path = prog.get_frame_collection_path()
+        if frame_collection_path.is_file() and not(args.force_frame_extraction):
 
+            frame_collection = FrameCollection.load(frame_collection_path)
+        else:
+            # happens on --force-frame-extraction. if we reextracted frames it makes no sense to keep the old descriptions            
+            frame_collection = FrameCollection.from_directory(
+                extraction_output_dir, str(args.video_file)
+            )
+    except Exception as e:
+        logger.error("Could not construct frame collection. {e}")
+        sys.exit(1)
+        
     logger.info(
         f"Extracted {len(frame_collection.frames)} images from {frame_collection.video_filepath}."
     )
 
     # 2. step: description generation
+    if args.force_frame_description:
+        logger.info(f"Ignoring previously generated frame descriptions (from --force-frame-description).")
+        # we do this by nulling them all
+        for frame in frame_collection.frames:
+            frame.description = None
+        
+    
     llm_config = LLMConfig(
         batch_size=args.batch_size, description_prompt=args.description_prompt
     )
     logger.debug(f"LLM Configuration: {llm_config.model_dump_json(indent=2)}")
 
-    # 3. step: describe frames
     described_frame_collection = describe_frames(frame_collection, llm_config, prog)
     logger.info("Finished frame descriptions.")
 
