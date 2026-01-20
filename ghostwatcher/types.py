@@ -160,9 +160,18 @@ class LLMConfig(BaseModel):
 
     caption_frame_context: int = Field(
         default = 16,
-        description = "How many frame descriptions to keep in context when generating video captions. Half of the context frames will be sourced from frames before the one that is being captioned, the other half from frame that come after."
+        description = "How many frame descriptions to keep in context when generating video captions. Half of the context frames will be sourced from frames before the one that is being captioned, the other half from frame that come after. Currently unused."
     )
 
+    caption_batch_size: int = Field(
+        default = 16,
+        description = "How many frames to cluster together when prompting the LLM to generate captions. Note that all the image descriptions will be included, so a larger batch size here will require more context and video ram. A smaller batch size can lead to the AI repeating itself in the captions, and being unable to find the actually relevant information."
+    )
+    
+    caption_prompt: str = Field(
+        default = "Above are several descriptions for image frames at certain time positions in a video. Please generate descriptive captions for specific time positions based on the above descriptions. The captions should be shorter than the full length descriptions above, as they will be spoken out using a TTS program and laid over the video. Try to find relevant changes and breakpoints to put captions, and generate captions that go deeper into description if nothing new occurs."
+        description = "The prompt given to the LLM to generate captions."
+    )
 
 class Caption(BaseModel):
     """A single caption line for a video. A caption line describes the state of affairs displayed in the video at a given moment."""
