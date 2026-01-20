@@ -261,10 +261,11 @@ def main() -> None:
         # constructa frame collection, either from extracted images or from a previously saved collection
         frame_collection_path = prog.get_frame_collection_path()
         if frame_collection_path.is_file() and not(args.force_frame_extraction):
-
+            logger.info(f"Continuing with existing frame collection.")
             frame_collection = FrameCollection.load(frame_collection_path)
         else:
-            # happens on --force-frame-extraction. if we reextracted frames it makes no sense to keep the old descriptions            
+            # happens on --force-frame-extraction. if we reextracted frames it makes no sense to keep the old descriptions
+            logger.info(f"Constructing new frame collection.")
             frame_collection = FrameCollection.from_directory(
                 extraction_output_dir, str(args.video_file)
             )
