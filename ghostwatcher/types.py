@@ -138,3 +138,9 @@ class Program(BaseModel):
         extraction_output_dir = self.work_dir / "extracted_frames"
         extraction_output_dir.mkdir(parents=True, exist_ok=True)
         return extraction_output_dir
+
+
+    def get_frame_collection_path(self) -> Path:
+        """Returns the path to the file that contains the program's frame collection.
+        This can be used to store intermediate results and to restore previous runs of the program."""
+        return self.work_dir / "frame_collection.json"
