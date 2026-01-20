@@ -7,6 +7,8 @@ import json
 from pydantic import BaseModel, Field
 from enum import StrEnum
 from pathlib import Path
+from loguru import logger
+
 from ghostbox import Ghostbox
 
 
@@ -101,6 +103,34 @@ class FrameCollection(BaseModel):
 
         return FrameCollection(video_filepath=video_filepath, frames=frames)
 
+
+    def merge(self, other: 'FrameCollection') -> None:
+        """Merges data members from OTHER framecollection into this one, if the update would be non-destructive.
+        For example, this will replace frame descriptions with the descriptions from other, but only if the frame matches and this instance's description member is None.
+        If the two collections don't match, this method does nothing."""
+        # FIXME: this is currently unused and might be removed
+        # sanity check
+        if self.video_filepath != other.video_filepath:
+            logger.debug(f"Skipping merge due to mismatched filepaths {self.video_filepath} and {other.video_filepath}.")
+            return
+
+        if len(self.frames) != len(other.frames):
+            logger.debug(f"Skipping merge of frame collections due to mismatched number of frames.")
+            return
+
+        # invariant: the length is equal
+        for i in range(len(self.frames)):
+            self_frame = self.frames[i]
+            other_frame = other.frames[i]
+            if self_frame.filepath != other_frame.filepath:
+                logger.debug(f"Continue on merge of frames due to mismatched filapths {self_frame.filepath} and {other_frame.filepath}.")
+                continue
+
+            # update only if we are null
+            if self_frame.description is None:
+                self_frame.description = other_frame.description
+
+        
     def save(self, filepath: Path) -> None:
         """Save the frame collection to a JSON file."""
         filepath.write_text(self.model_dump_json(indent=2))
@@ -129,7 +159,7 @@ class LLMConfig(BaseModel):
     )
 
 
-class Program(BaseModel):
+class Program(BaseModel, arbitrary_types_allowed=True):
     """Holds context relevant for program execution."""
 
     output_dir: Path = Field(
