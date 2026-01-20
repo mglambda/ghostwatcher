@@ -14,36 +14,41 @@ from loguru import logger
 from .types import *
 from .extraction import KeyFrameExtractor
 
-def describe_frames(frame_collection: FrameCollection, work_directory_filepath: str, box: Ghostbox, llm_config: LLMConfig) -> FrameCollection:
+
+def describe_frames(
+    frame_collection: FrameCollection, llm_config: LLMConfig, prog: Program
+) -> FrameCollection:
     """Fills in the description for all frames in the frame collection using multimodal AI, based on an LLM configuration."""
     # we don't alter the old collection, but construct a new one
     new_frame_collection = deepcopy(frame_collection)
     new_frame_collection.frames = []
-    
+
     frame_count = len(frame_collection.frames)
     for i in range(frame_count):
         frame = deepcopy(frame_collection.frames[i])
         logger.info(f"Generating description for frame {i+1} of {frame_count}.")
         prompt = ""
         b = llm_config.batch_size
-        batch_frames = frame_collection.frames[max(0, i+1-b):i+1]
+        batch_frames = frame_collection.frames[max(0, i + 1 - b) : i + 1]
         logger.debug(f"Got batch frames of size {len(batch_frames)}.")
         context_images = [f.filepath for f in batch_frames]
         if b > 1:
             prompt += llm_config.batch_description_prompt_part + "\n"
-            prompt += "Here is some timing information about the images from the video:\n"
+            prompt += (
+                "Here is some timing information about the images from the video:\n"
+            )
             for k, batch_frame in enumerate(batch_frames):
                 prompt += f" - Image {k} occurs at {batch_frame.seek_pos} seconds into the video.\n"
         else:
             prompt += f"The image is a still frame from a video, occurring at {batch_frames[-1].seek_pos} seconds into it.\n"
             prompt += llm_config.description_prompt
         try:
-            box.clear_history()
-            with box.images(context_images):
-                frame.description = box.text(
+            prog.box.clear_history()
+            with prog.box.images(context_images):
+                frame.description = prog.box.text(
                     prompt,
                 )
-                if error_str := box.get_last_error():
+                if error_str := prog.box.get_last_error():
                     logger.error(f"ghostbox: {error_str}")
                 print(f"# debug {i}:\n{frame.description}", file=sys.stderr, flush=True)
         except Exception as e:
@@ -52,7 +57,7 @@ def describe_frames(frame_collection: FrameCollection, work_directory_filepath: 
         new_frame_collection.frames.append(frame)
     return new_frame_collection
 
-    
+
 def setup_logging(debug: bool, log_timestamps: bool) -> None:
     """Configures loguru logger based on debug and timestamp flags."""
     logger.remove()  # Remove default handler
@@ -63,46 +68,50 @@ def setup_logging(debug: bool, log_timestamps: bool) -> None:
         log_format = "<green>{time}</green> | " + log_format
 
     logger.add(sys.stderr, level=log_level, format=log_format)
-    
+
+
 def main() -> None:
     """Main entry point for the ghostwatcher command-line interface."""
-    parser = argparse.ArgumentParser(description="Multimodal AI powered video description and commentary.")
+    parser = argparse.ArgumentParser(
+        description="Multimodal AI powered video description and commentary."
+    )
 
     # Positional argument
     parser.add_argument(
-        "video_file",
-        type=Path,
-        help="Path to the video file to describe/comment."
+        "video_file", type=Path, help="Path to the video file to describe/comment."
     )
 
     # Optional arguments
     parser.add_argument(
-        "-o", "--output-directory",
+        "-o",
+        "--output-directory",
         type=Path,
         default=Path("./output"),
-        help="Directory where output descriptions will be stored."
+        help="Directory where output descriptions will be stored.",
     )
 
-    
     parser.add_argument(
-        "-w", "--work-directory",
+        "-w",
+        "--work-directory",
         type=Path,
-        help="Temporary work directory for storing intermediate files (e.g., images). If omitted, a temporary directory will be created."
+        help="Temporary work directory for storing intermediate files (e.g., images). If omitted, a temporary directory will be created.",
     )
     parser.add_argument(
-        "-x", "--extraction-strategy",
+        "-x",
+        "--extraction-strategy",
         type=ExtractionStrategy,
         choices=list(ExtractionStrategy),
         default=ExtractionStrategy.keyframes,
-        help="Strategy for extracting frames from the video."
+        help="Strategy for extracting frames from the video.",
     )
 
     parser.add_argument(
-        "-c", "--character-folder",
+        "-c",
+        "--character-folder",
         type=str,
         default="ghost",
-        help="Character folders contain the system message and configuration options for ghostbox and the LLM backend."
-    )    
+        help="Character folders contain the system message and configuration options for ghostbox and the LLM backend.",
+    )
 
     parser.add_argument(
         "-b",
@@ -118,38 +127,37 @@ def main() -> None:
         "--endpoint",
         type=str,
         default="http://localhost:8080",
-        help="The HTTP endpoint to query. The default is compatible with llama.cpp's llama-server out of the box. When using the generic backend, it will expect an OpenAI compatible API at this address."
-    )    
-    
+        help="The HTTP endpoint to query. The default is compatible with llama.cpp's llama-server out of the box. When using the generic backend, it will expect an OpenAI compatible API at this address.",
+    )
 
-    
     parser.add_argument(
         "--debug",
         action=argparse.BooleanOptionalAction,
-        help="Enable verbose/debug output."
+        help="Enable verbose/debug output.",
     )
     parser.add_argument(
         "--log-timestamps",
         action=argparse.BooleanOptionalAction,
-        help="Enable timestamps in log output."
+        help="Enable timestamps in log output.",
     )
     parser.add_argument(
-        "-f", "--force-frame-extraction",
+        "-f",
+        "--force-frame-extraction",
         action=argparse.BooleanOptionalAction,
-        help="Force frame extraction even if the output directory is not empty."
+        help="Force frame extraction even if the output directory is not empty.",
     )
 
     parser.add_argument(
         "--batch-size",
         type=int,
         default=LLMConfig.model_fields["batch_size"].default,
-        help="How many images to describe in one batch. A higher batch size gives better results because the LLM will have more images in context simultaneously, but also requires substantially more memory and processing time."
+        help="How many images to describe in one batch. A higher batch size gives better results because the LLM will have more images in context simultaneously, but also requires substantially more memory and processing time.",
     )
     parser.add_argument(
         "--description-prompt",
         type=str,
         default=LLMConfig.model_fields["description_prompt"].default,
-        help="Prompt used for basic image descriptions."
+        help="Prompt used for basic image descriptions.",
     )
 
     args = parser.parse_args()
@@ -158,7 +166,7 @@ def main() -> None:
     setup_logging(args.debug, args.log_timestamps)
 
     # Handle work directory
-    temp_dir_obj: Optional[tempfile.TemporaryDirectory] = None # type: ignore
+    temp_dir_obj: Optional[tempfile.TemporaryDirectory] = None  # type: ignore
     if args.work_directory:
         work_dir = args.work_directory
         work_dir.mkdir(parents=True, exist_ok=True)
@@ -178,73 +186,87 @@ def main() -> None:
     logger.debug(f"Log timestamps enabled: {args.log_timestamps}")
     logger.debug(f"Force frame extraction: {args.force_frame_extraction}")
 
-    # 1. step: extraction of images
-    extractor: ImageExtractor
-    extraction_output_dir = work_dir / "extracted_frames"
-    extraction_output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Check if extraction can be skipped
-    skip_extraction = False
-    if any(extraction_output_dir.iterdir()):
-        if args.force_frame_extraction:
-            logger.info(f"Force frame extraction: clearing existing frames in '{extraction_output_dir}'.")
-            for f in extraction_output_dir.iterdir():
-                if f.is_file():
-                    f.unlink()
-        else:
-            logger.info(f"Skipping frame extraction: '{extraction_output_dir}' is not empty. Use --force-frame-extraction to override.")
-            skip_extraction = True
-
-    if not skip_extraction:
-        match args.extraction_strategy:
-            case ExtractionStrategy.keyframes:
-                extractor = KeyFrameExtractor()
-                extractor.process(
-                    video_filepath=args.video_file,
-                    output_directory_filepath=str(extraction_output_dir),
-                    config=ImageExtractorConfig(use_keyframes=True)
-                )
-            case ExtractionStrategy.interval:
-                # TODO: Implement IntervalExtractor
-                logger.warning("Interval extraction not yet implemented.")
-                pass
-            case _ as unreachable: 
-                assert_never(unreachable)
-
-    # we have the images, now let's bundle them in a collection
-    frame_collection = FrameCollection.from_directory(extraction_output_dir, str(args.video_file))
-    logger.info(f"Extracted {len(frame_collection.frames)} images from {frame_collection.video_filepath}.")
-    
-    # 2. step: description generation
     logger.info(f"Setting up ghostbox with {args.backend} backend.")
     box = Ghostbox(
-        character_folder = args.character_folder,
-        backend = args.backend,
-        endpoint = args.endpoint,
-        stdout = False,
-        stderr = args.debug
+        character_folder=args.character_folder,
+        backend=args.backend,
+        endpoint=args.endpoint,
+        stdout=False,
+        stderr=args.debug,
     )
 
+    # construct program object - this finishes intialization
+    prog = Program(output_dir=args.output_directory, work_dir=work_dir, box=box)
+
+    # 1. step: extraction of images
+    try:
+        extractor: ImageExtractor
+        extraction_output_dir = prog.get_extraction_output_dir()
+
+        # Check if extraction can be skipped
+        skip_extraction = False
+        if any(extraction_output_dir.iterdir()):
+            if args.force_frame_extraction:
+                logger.info(
+                    f"Force frame extraction: clearing existing frames in '{extraction_output_dir}'."
+                )
+                for f in extraction_output_dir.iterdir():
+                    if f.is_file():
+                        f.unlink()
+            else:
+                logger.info(
+                    f"Skipping frame extraction: '{extraction_output_dir}' is not empty. Use --force-frame-extraction to override."
+                )
+                skip_extraction = True
+
+        if not skip_extraction:
+            match args.extraction_strategy:
+                case ExtractionStrategy.keyframes:
+                    extractor = KeyFrameExtractor()
+                    extractor.process(
+                        video_filepath=args.video_file,
+                        output_path=extraction_output_dir,
+                        config=ImageExtractorConfig(use_keyframes=True),
+                    )
+                case ExtractionStrategy.interval:
+                    # TODO: Implement IntervalExtractor
+                    logger.warning("Interval extraction not yet implemented.")
+                    pass
+                case _ as unreachable:
+                    assert_never(unreachable)
+
+        # we have the images, now let's bundle them in a collection
+        frame_collection = FrameCollection.from_directory(
+            extraction_output_dir, str(args.video_file)
+        )
+    except Exception as e:
+        logger.error(f"Failed to extract images. Reason: {e}")
+        sys.exit(1)
+
+    logger.info(
+        f"Extracted {len(frame_collection.frames)} images from {frame_collection.video_filepath}."
+    )
+
+    # 2. step: description generation
     llm_config = LLMConfig(
-        batch_size=args.batch_size,
-        description_prompt=args.description_prompt
+        batch_size=args.batch_size, description_prompt=args.description_prompt
     )
     logger.debug(f"LLM Configuration: {llm_config.model_dump_json(indent=2)}")
 
     # 3. step: describe frames
-    described_frame_collection = describe_frames(frame_collection, str(work_dir), box, llm_config)
+    described_frame_collection = describe_frames(frame_collection, llm_config, prog)
     logger.info("Finished frame descriptions.")
-
 
     # temporary for development - just output the descriptions
     print(f"=== OUTPUT ===")
     for i, frame in enumerate(described_frame_collection.frames):
         print(f"# {i} at {frame.seek_pos}s:")
         print(frame.description)
-        
+
     # Explicitly clean up temporary directory if one was created
     if temp_dir_obj:
         temp_dir_obj.cleanup()
+
 
 if __name__ == "__main__":
     main()

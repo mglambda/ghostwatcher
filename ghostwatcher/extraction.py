@@ -6,14 +6,16 @@ from loguru import logger
 from .types import ImageExtractor, ImageExtractorConfig
 
 
-
 class KeyFrameExtractor:
 
-    def process(self, video_filepath: str, output_directory_filepath: str, config: ImageExtractorConfig) -> None:
-        output_path = Path(output_directory_filepath)
-        output_path.mkdir(parents=True, exist_ok=True) # Ensure output directory exists
+    def process(
+        self, video_filepath: str, output_path: Path, config: ImageExtractorConfig
+    ) -> None:
+        output_path.mkdir(parents=True, exist_ok=True)  # Ensure output directory exists
 
-        logger.info(f"Starting keyframe extraction for video: {video_filepath} to {output_path}")
+        logger.info(
+            f"Starting keyframe extraction for video: {video_filepath} to {output_path}"
+        )
 
         # ffmpeg command to extract keyframes
         # -i: input file
@@ -23,21 +25,28 @@ class KeyFrameExtractor:
         # frame-%04d.png: output pattern for image files (e.g., frame-0001.png)
         command = [
             "ffmpeg",
-            "-i", str(video_filepath),
-            "-vf", "select=eq(pict_type\\,I),showinfo",
-            "-vsync", "vfr",
-            "-q:v", "2",
-            str(output_path / "frame-%04d.png")
+            "-i",
+            str(video_filepath),
+            "-vf",
+            "select=eq(pict_type\\,I),showinfo",
+            "-vsync",
+            "vfr",
+            "-q:v",
+            "2",
+            str(output_path / "frame-%04d.png"),
         ]
 
         try:
             # Run the ffmpeg command
             # check=True will raise a CalledProcessError if the command returns a non-zero exit code
             result = subprocess.run(command, check=True, capture_output=True, text=True)
-            logger.info(f"Keyframe extraction completed successfully for {video_filepath}.")
-            
+            logger.info(
+                f"Keyframe extraction completed successfully for {video_filepath}."
+            )
+
             # Parse timestamps from showinfo output in stderr
             import re
+
             timestamps = []
             # Look for lines like: [Parsed_showinfo_0 @ 0x...] n:   0 pts:      0 pts_time:0 ...
             for line in result.stderr.splitlines():
@@ -45,7 +54,7 @@ class KeyFrameExtractor:
                     match = re.search(r"pts_time:([\d\.]+)", line)
                     if match:
                         timestamps.append(match.group(1))
-            
+
             # Rename files to include timestamps
             for i, ts in enumerate(timestamps):
                 frame_num = i + 1
@@ -63,10 +72,14 @@ class KeyFrameExtractor:
             logger.error(f"Keyframe extraction failed for {video_filepath}. Error: {e}")
             logger.error(f"FFmpeg stdout:\n{e.stdout}")
             logger.error(f"FFmpeg stderr:\n{e.stderr}")
-            raise # Re-raise the exception to indicate failure
+            raise  # Re-raise the exception to indicate failure
         except FileNotFoundError:
-            logger.error("FFmpeg command not found. Please ensure FFmpeg is installed and available in your system's PATH.")
+            logger.error(
+                "FFmpeg command not found. Please ensure FFmpeg is installed and available in your system's PATH."
+            )
             raise
         except Exception as e:
-            logger.error(f"An unexpected error occurred during keyframe extraction: {e}")
+            logger.error(
+                f"An unexpected error occurred during keyframe extraction: {e}"
+            )
             raise
