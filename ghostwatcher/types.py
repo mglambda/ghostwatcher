@@ -158,7 +158,35 @@ class LLMConfig(BaseModel):
         description="Prompt used for basic image descriptions.",
     )
 
+    caption_frame_context: int = Field(
+        default = 16,
+        description = "How many frame descriptions to keep in context when generating video captions. Half of the context frames will be sourced from frames before the one that is being captioned, the other half from frame that come after."
+    )
 
+
+class Caption(BaseModel):
+    """A single caption line for a video. A caption line describes the state of affairs displayed in the video at a given moment."""
+
+    content: str = Field(
+        description = "The text content of the caption. It should be a description of what is shown in the video."
+    )
+    
+    seek_pos: float = Field(
+        default = -1.0,
+        description = "The time position in the video this caption should be applied. Negative values indicate that a time could not be determined."
+    )
+    
+class VideoCaptions(BaseModel):
+    """Container for captions intended for a video file."""
+
+    video_filepath: str = Field(
+        description = "path of the video file these captions belong to."
+    )
+
+    captions: List[Caption] = Field(
+        default_factory = list,
+        description = "List of individual caption lines."
+    )
 class Program(BaseModel, arbitrary_types_allowed=True):
     """Holds context relevant for program execution."""
 
