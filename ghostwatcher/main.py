@@ -67,10 +67,67 @@ def describe_frames(
 
 def caption_frames(frame_collection: FrameCollection, llm_config: LLMConfig, prog: Program) -> VideoCaptions:
     """Generates short time-sensitive video captions based on a frame collection."""
-    # FIXME: we are ignoring existing caption json files for now
-    video_captions = VideoCaptions(video_filepath = frame_collection.video_filepath)
-    # fill in
-    video_captions.save(prog.get_captions_path())
+    video_captions = VideoCaptions(video_filepath=frame_collection.video_filepath, captions=[])
+    
+    # Load existing captions if available (no force flag for now)
+    captions_path = prog.get_captions_path()
+    if captions_path.is_file():
+        try:
+            existing_captions = VideoCaptions.load(captions_path)
+            if existing_captions.video_filepath == frame_collection.video_filepath:
+                video_captions = existing_captions
+                logger.info(f"Loaded existing captions from {captions_path}.")
+            else:
+                logger.warning(f"Existing captions file {captions_path} belongs to a different video. Starting fresh.")
+        except Exception as e:
+            logger.error(f"Failed to load existing captions from {captions_path}: {e}. Starting fresh.")
+
+    num_frames = len(frame_collection.frames)
+    batch_size = llm_config.caption_batch_size
+
+    for i in range(0, num_frames, batch_size):
+        batch_frames = frame_collection.frames[i : i + batch_size]
+        
+        if not batch_frames:
+            continue
+
+        logger.info(f"Generating captions for batch {i // batch_size + 1} (frames {i+1} to {min(i + batch_size, num_frames)}).")
+
+        batch_preamble_str = ""
+        for k, frame in enumerate(batch_frames):
+            # Only include frames that have a description
+            if frame.description:
+                batch_preamble_str += f"Frame {k+1} (at {frame.seek_pos:.2f}s): {frame.description}\n"
+            else:
+                logger.warning(f"Frame {k+1} in batch (at {frame.seek_pos:.2f}s) has no description. Skipping in preamble.")
+
+        if not batch_preamble_str:
+            logger.warning(f"No described frames in batch {i // batch_size + 1}. Skipping LLM call.")
+            continue
+
+        prompt = batch_preamble_str + "\n" + llm_config.caption_prompt
+        logger.debug(f"Prompt for batch {i // batch_size + 1}:\n{prompt}")
+
+        try:
+            prog.box.clear_history() # Clear history for each batch to avoid context overflow
+            batch_video_captions = prog.box.new(VideoCaptions, prompt)
+            
+            if error_str := prog.box.get_last_error():
+                logger.error(f"ghostbox (captioning): {error_str}")
+
+            video_captions.captions.extend(batch_video_captions.captions)
+            logger.debug(f"Generated {len(batch_video_captions.captions)} captions for batch {i // batch_size + 1}.")
+            for caption in batch_video_captions.captions:
+                logger.debug(f"  - Caption at {caption.seek_pos:.2f}s: {caption.content}")
+
+        except Exception as e:
+            logger.error(f"Failed to generate captions for batch {i // batch_size + 1}: {e}")
+            # Continue to next batch even if one fails, to save partial progress
+
+        # Save intermediate progress after each batch
+        video_captions.save(captions_path)
+        logger.info(f"Saved intermediate captions to {captions_path}.")
+        
     return video_captions
 def setup_logging(debug: bool, log_timestamps: bool) -> None:
     """Configures loguru logger based on debug and timestamp flags."""

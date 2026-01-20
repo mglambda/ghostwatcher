@@ -169,7 +169,7 @@ class LLMConfig(BaseModel):
     )
     
     caption_prompt: str = Field(
-        default = "Above are several descriptions for image frames at certain time positions in a video. Please generate descriptive captions for specific time positions based on the above descriptions. The captions should be shorter than the full length descriptions above, as they will be spoken out using a TTS program and laid over the video. Try to find relevant changes and breakpoints to put captions, and generate captions that go deeper into description if nothing new occurs."
+        default = "Above are several descriptions for image frames at certain time positions in a video. Please generate descriptive captions for specific time positions based on the above descriptions. The captions should be shorter than the full length descriptions above, as they will be spoken out using a TTS program and laid over the video. Try to find relevant changes and breakpoints to put captions, and generate captions that go deeper into description if nothing new occurs.",
         description = "The prompt given to the LLM to generate captions."
     )
 
