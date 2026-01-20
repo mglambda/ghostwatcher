@@ -1,6 +1,7 @@
 import argparse
 import sys
 import tempfile
+import sys
 from pathlib import Path
 from copy import deepcopy
 from typing import Optional, assert_never
@@ -23,14 +24,28 @@ def describe_frames(frame_collection: FrameCollection, work_directory_filepath: 
     for i in range(frame_count):
         frame = deepcopy(frame_collection.frames[i])
         logger.info(f"Generating description for frame {i+1} of {frame_count}.")
-        # FIXME: for now we are assuming batch_size == 1        
-        context_images = [frame.filepath]
+        prompt = ""
+        b = llm_config.batch_size
+        batch_frames = frame_collection.frames[max(0, i+1-b):i+1]
+        logger.debug(f"Got batch frames of size {len(batch_frames)}.")
+        context_images = [f.filepath for f in batch_frames]
+        if b > 1:
+            prompt += llm_config.batch_description_prompt_part + "\n"
+            prompt += "Here is some timing information about the images from the video:\n"
+            for k, batch_frame in enumerate(batch_frames):
+                prompt += f" - Image {k} occurs at {batch_frame.seek_pos} seconds into the video.\n"
+        else:
+            prompt += f"The image is a still frame from a video, occurring at {batch_frames[-1].seek_pos} seconds into it.\n"
+            prompt += llm_config.description_prompt
         try:
             box.clear_history()
             with box.images(context_images):
                 frame.description = box.text(
-                    llm_config.description_prompt
+                    prompt,
                 )
+                if error_str := box.get_last_error():
+                    logger.error(f"ghostbox: {error_str}")
+                print(f"# debug {i}:\n{frame.description}", file=sys.stderr, flush=True)
         except Exception as e:
             logger.error(f"Failed to describe frame {i}: {e}")
 

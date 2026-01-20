@@ -109,6 +109,12 @@ class LLMConfig(BaseModel):
         default = 3,
         description = "How many images to describe in one batch. A higher batch size gives better results because the LLM will have more images in context simultaneously, but also requires substantially more memory and processing time."
     )
+
+
+    batch_description_prompt_part: str = Field(
+        default = "Here are several still frames from a video. All but the last one have been previously described. Focus on the last image, do not repeat describing the first few images, but do include contextual knowledge of them   in your description, and describe any changes that have taken place in the newest image compared to the previous ones.",
+        description = "Text snippet included in the image description prompt if the batch size is greater than 1."
+    )
     
     description_prompt: str = Field(
         default = "Describe the image.",
