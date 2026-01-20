@@ -65,7 +65,13 @@ def describe_frames(
         
     return new_frame_collection
 
-
+def caption_frames(frame_collection: FrameCollection, llm_config: LLMConfig, prog: Program) -> VideoCaptions:
+    """Generates short time-sensitive video captions based on a frame collection."""
+    # FIXME: we are ignoring existing caption json files for now
+    video_captions = VideoCaptions(video_filepath = frame_collection.video_filepath)
+    # fill in
+    video_captions.save(prog.get_captions_path())
+    return video_captions
 def setup_logging(debug: bool, log_timestamps: bool) -> None:
     """Configures loguru logger based on debug and timestamp flags."""
     logger.remove()  # Remove default handler
@@ -299,6 +305,18 @@ def main() -> None:
         print(f"# {i} at {frame.seek_pos}s:")
         print(frame.description)
 
+    # 3. step - caption generation
+    logger.info(f"Generating captions.")
+    video_captions = caption_frames(described_frame_collection, llm_config, prog)
+
+    # output captions - again temporary during development
+    print(f"=== captions ==")
+    for i, caption in enumerate(video_captions.captions):
+        print(f"#{i} at {caption.seek_pos}")
+        print(f"{caption.content}")
+
+
+    
     # Explicitly clean up temporary directory if one was created
     if temp_dir_obj:
         temp_dir_obj.cleanup()

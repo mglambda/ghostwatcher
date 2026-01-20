@@ -187,6 +187,16 @@ class VideoCaptions(BaseModel):
         default_factory = list,
         description = "List of individual caption lines."
     )
+
+    def save(self, filepath: Path) -> None:
+        """Save the video captions to a JSON file."""
+        filepath.write_text(self.model_dump_json(indent=2))
+
+    @staticmethod
+    def load(filepath: Path) -> "VideoCaptions":
+        """Load video captions from a JSON file."""
+        return VideoCaptions.model_validate_json(filepath.read_text())
+
 class Program(BaseModel, arbitrary_types_allowed=True):
     """Holds context relevant for program execution."""
 
@@ -211,3 +221,7 @@ class Program(BaseModel, arbitrary_types_allowed=True):
         """Returns the path to the file that contains the program's frame collection.
         This can be used to store intermediate results and to restore previous runs of the program."""
         return self.work_dir / "frame_collection.json"
+
+    def get_captions_path(self) -> Path:
+        """Returns the path to the file that stores video captions."""
+        return self.work_dir / "video_captions.json"        
