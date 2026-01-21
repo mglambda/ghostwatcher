@@ -169,20 +169,19 @@ class LLMConfig(BaseModel):
     )
     
     caption_prompt: str = Field(
-        default = "Above are several descriptions for image frames at certain time positions in a video. Please generate descriptive captions for specific time positions based on the above descriptions. The captions should be shorter than the full length descriptions above, as they will be spoken out using a TTS program and laid over the video. Try to find relevant changes and breakpoints to put captions, and generate captions that go deeper into description if nothing new occurs.",
+        default = "Above are several descriptions for image frames at certain time positions in a video. Please generate descriptive captions for specific time positions based on the above descriptions. The captions should be shorter than the full length descriptions above, as they will be spoken out using a TTS program and laid over the video. Try to find relevant changes and breakpoints to put captions, and generate captions that go deeper into description if nothing new occurs. Focus on major changes and big picture impressions, while occasionally dropping specific details.\nImportant: Do not mention the time in the actual caption content, and be sure to leave an adequate amount of time between the captions, so that their spoken-out versions do not overlap (the seek_pos is the time in the video the speech output will start for that caption).",
         description = "The prompt given to the LLM to generate captions."
     )
 
 class Caption(BaseModel):
-    """A single caption line for a video. A caption line describes the state of affairs displayed in the video at a given moment."""
+    """A single caption line for a video. A caption line describes the state of affairs displayed in the video at a given moment, in the context of the entire video."""
 
     content: str = Field(
-        description = "The text content of the caption. It should be a description of what is shown in the video."
+        description = "The text content of the caption. It should be a description of what is shown in the video, while taking previous video content into account. The text should be reasonably short, in a way that may be displayed or spoken out while the video is playing."
     )
     
     seek_pos: float = Field(
-        default = -1.0,
-        description = "The time position in the video this caption should be applied. Negative values indicate that a time could not be determined."
+        description = "The time position, in seconds, at which this caption applies."
     )
     
 class VideoCaptions(BaseModel):

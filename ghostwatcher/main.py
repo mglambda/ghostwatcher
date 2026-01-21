@@ -22,15 +22,15 @@ def describe_frames(
     # we don't alter the old collection, but construct a new one
     # this isn't strictly necessary right now, but may allow us to e.g. look up old descriptions in the future, so don't refactor this
     new_frame_collection = deepcopy(frame_collection)
-    new_frame_collection.frames = []
 
+    # we now modify the new collection
     frame_count = len(frame_collection.frames)
     for i in range(frame_count):
-        frame = deepcopy(frame_collection.frames[i])
+        frame = new_frame_collection.frames[i]
         if frame.description:
             logger.info(f"Frame {i+1} of {frame_count} already described. Skipping.")
             continue
-        
+
         logger.info(f"Generating description for frame {i+1} of {frame_count}.")
         prompt = ""
         b = llm_config.batch_size
@@ -59,7 +59,6 @@ def describe_frames(
         except Exception as e:
             logger.error(f"Failed to describe frame {i}: {e}")
 
-        new_frame_collection.frames.append(frame)
         # save intermediate progress
         new_frame_collection.save(prog.get_frame_collection_path())
         
