@@ -104,7 +104,14 @@ def caption_frames(frame_collection: FrameCollection, llm_config: LLMConfig, pro
             logger.warning(f"No described frames in batch {i // batch_size + 1}. Skipping LLM call.")
             continue
 
-        prompt = batch_preamble_str + "\n" + llm_config.caption_prompt
+        prompt = f"""## Video Frames
+```
+{batch_preamble_str}
+```
+
+## Instruction        
+{        llm_config.caption_prompt}
+"""
         logger.debug(f"Prompt for batch {i // batch_size + 1}:\n{prompt}")
 
         try:
