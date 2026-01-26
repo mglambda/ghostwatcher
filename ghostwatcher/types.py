@@ -233,3 +233,25 @@ class Program(BaseModel, arbitrary_types_allowed=True):
     def get_captions_path(self) -> Path:
         """Returns the path to the file that stores video captions."""
         return self.work_dir / "video_captions.json"        
+
+
+    def get_tts_captions_path(self) -> Path:
+        """Returns the filepath to the wave file that stores the combined spoken captions for the video."""
+        return self.work_dir / "tts_captions.wav"        
+
+    
+class TTSOutput(Protocol):
+    """Interface for types that can output spoken word wav files based on text."""
+
+    def render(self, text: str) -> Path:
+        """Takes a string to speak and renders it to a wave file, then returns the path to that wave file."""
+        pass
+
+class SPDOutput(BaseModel):
+    """Outputs wave files using the linux based spd-say program."""
+
+    rate: int = 250
+        
+    def render(self, text: str) -> Path:
+        # FILL THIS IN
+        pass

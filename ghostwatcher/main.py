@@ -135,6 +135,11 @@ def caption_frames(frame_collection: FrameCollection, llm_config: LLMConfig, pro
         logger.info(f"Saved intermediate captions to {captions_path}.")
         
     return video_captions
+
+def speak_captions(video_captions: VideoCaptions, tts_output: TTSOutput, prog: Program) -> Path:
+    """Speaks all captions in the video captions object with a provided TTS output type and combines the outputs into a single wave file that speaks the captions at their appropriate times. Returns the combined wave files filepath."""
+    # FILL THIS IN
+    pass
 def setup_logging(debug: bool, log_timestamps: bool) -> None:
     """Configures loguru logger based on debug and timestamp flags."""
     logger.remove()  # Remove default handler
@@ -378,6 +383,10 @@ def main() -> None:
         print(f"#{i} at {caption.seek_pos}")
         print(f"{caption.content}")
 
+    # 4. step: Generate wave file based on captions
+    # pick a ttsoutput type, for now we always do spd
+    tts_output = SPDOutput(rate = 250)
+    combined_wave_file = speak_captions(video_captions, tts_output, prog)
 
     
     # Explicitly clean up temporary directory if one was created
