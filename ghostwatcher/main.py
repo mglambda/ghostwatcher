@@ -1,5 +1,6 @@
 import argparse
 import sys
+import subprocess
 import tempfile
 import sys
 from pathlib import Path
@@ -138,8 +139,90 @@ def caption_frames(frame_collection: FrameCollection, llm_config: LLMConfig, pro
 
 def speak_captions(video_captions: VideoCaptions, tts_output: TTSOutput, prog: Program) -> Path:
     """Speaks all captions in the video captions object with a provided TTS output type and combines the outputs into a single wave file that speaks the captions at their appropriate times. Returns the combined wave files filepath."""
-    # FILL THIS IN
-    pass
+    
+    if not video_captions.captions:
+        logger.info("No captions to speak. Returning empty path.")
+        return Path("") # Or raise an error, depending on desired behavior
+
+    temp_wav_files: List[Path] = []
+    filter_complex_parts: List[str] = []
+    
+    # 1. Render each caption to a temporary WAV file
+    for i, caption in enumerate(video_captions.captions):
+        try:
+            wav_path = tts_output.render(caption.content)
+            temp_wav_files.append(wav_path)
+            
+            # For ffmpeg filter_complex, we need to define each input stream
+            # and then apply adelay to it.
+            # [i:a] refers to the audio stream of the i-th input file
+            # adelay takes milliseconds
+            delay_ms = int(caption.seek_pos * 1000)
+            
+            # Create a unique label for each delayed stream
+            stream_label = f"a{i}"
+            
+            filter_complex_parts.append(f"[{i}:a]adelay={delay_ms}|{delay_ms}[{stream_label}];")
+            
+            logger.debug(f"Rendered caption '{caption.content[:50]}...' to {wav_path} with seek_pos {caption.seek_pos}s.")
+            
+        except Exception as e:
+            logger.error(f"Failed to render audio for caption '{caption.content[:50]}...' at {caption.seek_pos}s: {e}")
+            # Continue to next caption, but clean up already created temp files later
+            
+    if not temp_wav_files:
+        logger.error("No audio files were successfully rendered. Cannot create combined audio.")
+        return Path("")
+
+    # 2. Construct the ffmpeg command to merge/mix the delayed audio files
+    output_filepath = prog.get_tts_captions_path()
+    
+    # Build the amix part of the filter_complex
+    # [a0][a1]...[aN]amix=inputs=N:duration=longest[a_out]
+    amix_inputs = "".join([f"[a{i}]" for i in range(len(temp_wav_files))])
+    filter_complex_parts.append(f"{amix_inputs}amix=inputs={len(temp_wav_files)}:duration=longest[a_out]")
+    
+    ffmpeg_command = [
+        "ffmpeg",
+        "-y", # Overwrite output file without asking
+    ]
+    
+    # Add all input files
+    for wav_path in temp_wav_files:
+        ffmpeg_command.extend(["-i", str(wav_path)])
+        
+    # Add the filter_complex string
+    ffmpeg_command.extend(["-filter_complex", "".join(filter_complex_parts)])
+    
+    # Map the output audio stream
+    ffmpeg_command.extend(["-map", "[a_out]"])
+    
+    # Output file
+    ffmpeg_command.append(str(output_filepath))
+
+    logger.debug(f"FFmpeg command: {' '.join(ffmpeg_command)}")
+
+    try:
+        result = subprocess.run(ffmpeg_command, check=True, capture_output=True, text=True)
+        logger.info(f"Successfully combined {len(temp_wav_files)} caption audio files into {output_filepath}.")
+        if result.stderr:
+            logger.debug(f"FFmpeg stderr:\n{result.stderr}")
+        return output_filepath
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to combine caption audio files with FFmpeg. Error: {e}")
+        logger.error(f"FFmpeg stdout:\n{e.stdout}")
+        logger.error(f"FFmpeg stderr:\n{e.stderr}")
+        raise # Re-raise to indicate failure
+    except FileNotFoundError:
+        logger.error("FFmpeg command not found. Please ensure FFmpeg is installed and available in your system's PATH.")
+        raise
+    finally:
+        # Clean up temporary WAV files
+        for wav_path in temp_wav_files:
+            if wav_path.exists():
+                wav_path.unlink()
+                logger.debug(f"Cleaned up temporary WAV file: {wav_path}")
+                
 def setup_logging(debug: bool, log_timestamps: bool) -> None:
     """Configures loguru logger based on debug and timestamp flags."""
     logger.remove()  # Remove default handler
@@ -386,8 +469,9 @@ def main() -> None:
     # 4. step: Generate wave file based on captions
     # pick a ttsoutput type, for now we always do spd
     tts_output = VoxinOutput(rate = 250)
+    logger.info(f"Generating TTS captions.")
     combined_wave_file = speak_captions(video_captions, tts_output, prog)
-
+    logger.info(f"TTS Captions placed in {combined_wave_file}")
     
     # Explicitly clean up temporary directory if one was created
     if temp_dir_obj:
