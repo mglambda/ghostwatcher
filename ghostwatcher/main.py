@@ -1,11 +1,11 @@
+from typing import *
 import argparse
 import sys
 import subprocess
 import tempfile
-import sys
 from pathlib import Path
 from copy import deepcopy
-from typing import Optional, assert_never
+
 
 import ghostbox
 from ghostbox import Ghostbox
@@ -14,6 +14,26 @@ from loguru import logger
 
 from .types import *
 from .extraction import KeyFrameExtractor
+
+# Helper function to get audio duration
+def get_audio_duration(filepath: Path) -> Optional[float]:
+    """Get the duration of an audio file in seconds using ffprobe."""
+    command = [
+        "ffprobe",
+        "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        str(filepath)
+    ]
+    try:
+        result = subprocess.run(command, check=True, capture_output=True, text=True)
+        return float(result.stdout.strip())
+    except (subprocess.CalledProcessError, ValueError) as e:
+        logger.error(f"Failed to get audio duration for {filepath}: {e}")
+        return None
+    except FileNotFoundError:
+        logger.error("ffprobe command not found. Please ensure FFmpeg (which includes ffprobe) is installed and available in your system's PATH.")
+        return None
 
 
 def describe_frames(
@@ -142,69 +162,84 @@ def speak_captions(video_captions: VideoCaptions, tts_output: TTSOutput, tts_con
     
     if not video_captions.captions:
         logger.info("No captions to speak. Returning empty path.")
-        return Path("") # Or raise an error, depending on desired behavior
+        return Path("")
 
-    temp_wav_files: List[Path] = []
-    filter_complex_parts: List[str] = []
-    
-    # 1. Render each caption to a temporary WAV file
+    processed_audio_data: List[Tuple[Path, float, float]] = [] # (wav_path, actual_start_time, duration)
+    next_available_time = 0.0
+
+    # 1. Render each caption to a temporary WAV file, checking for overlaps
     for i, caption in enumerate(video_captions.captions):
+        intended_start_time = caption.seek_pos
+
+        if intended_start_time < next_available_time:
+            logger.info(
+                f"Skipping caption '{caption.content[:50]}...' at {intended_start_time:.2f}s "
+                f"due to overlap. Next available time is {next_available_time:.2f}s."
+            )
+            continue # Skip this caption
+
         try:
             wav_path = tts_output.render(caption.content)
-            temp_wav_files.append(wav_path)
+            audio_duration = get_audio_duration(wav_path)
+
+            if audio_duration is None:
+                logger.error(f"Could not determine duration for audio file {wav_path}. Skipping caption.")
+                if wav_path.exists():
+                    wav_path.unlink()
+                continue
+
+            actual_start_time = intended_start_time
+            processed_audio_data.append((wav_path, actual_start_time, audio_duration))
             
-            # For ffmpeg filter_complex, we need to define each input stream
-            # and then apply adelay to it.
-            # [i:a] refers to the audio stream of the i-th input file
-            # adelay takes milliseconds
-            delay_ms = int(caption.seek_pos * 1000)
+            next_available_time = actual_start_time + audio_duration + tts_config.padding_seconds
             
-            # Create a unique label for each delayed stream
-            stream_label = f"a{i}"
-            
-            filter_complex_parts.append(f"[{i}:a]adelay={delay_ms}|{delay_ms}[{stream_label}];")
-            
-            logger.debug(f"Rendered caption '{caption.content[:50]}...' to {wav_path} with seek_pos {caption.seek_pos}s.")
+            logger.debug(
+                f"Rendered caption '{caption.content[:50]}...' to {wav_path} "
+                f"starting at {actual_start_time:.2f}s (duration: {audio_duration:.2f}s). "
+                f"Next available time: {next_available_time:.2f}s."
+            )
             
         except Exception as e:
-            logger.error(f"Failed to render audio for caption '{caption.content[:50]}...' at {caption.seek_pos}s: {e}")
-            # Continue to next caption, but clean up already created temp files later
-            
-    if not temp_wav_files:
-        logger.error("No audio files were successfully rendered. Cannot create combined audio.")
+            logger.error(f"Failed to render audio for caption '{caption.content[:50]}...' at {intended_start_time:.2f}s: {e}")
+            # Continue to next caption, but ensure any created temp file is cleaned up in finally block
+
+    if not processed_audio_data:
+        logger.error("No audio files were successfully rendered or all were skipped. Cannot create combined audio.")
         return Path("")
 
     # 2. Construct the ffmpeg command to merge/mix the delayed audio files
     output_filepath = prog.get_tts_captions_path()
-    
-    # Build the amix part of the filter_complex
-    # [a0][a1]...[aN]amix=inputs=N:duration=longest[a_out]
-    amix_inputs = "".join([f"[a{i}]" for i in range(len(temp_wav_files))])
-    filter_complex_parts.append(f"{amix_inputs}amix=inputs={len(temp_wav_files)}:duration=longest[a_out]")
     
     ffmpeg_command = [
         "ffmpeg",
         "-y", # Overwrite output file without asking
     ]
     
-    # Add all input files
-    for wav_path in temp_wav_files:
+    filter_complex_parts: List[str] = []
+    amix_inputs: List[str] = []
+
+    for j, (wav_path, actual_start_time, _) in enumerate(processed_audio_data):
         ffmpeg_command.extend(["-i", str(wav_path)])
         
-    # Add the filter_complex string
+        delay_ms = int(actual_start_time * 1000)
+        stream_label = f"a{j}"
+        
+        filter_complex_parts.append(f"[{j}:a]adelay={delay_ms}|{delay_ms}[{stream_label}];")
+        amix_inputs.append(f"[{stream_label}]")
+            
+    # Build the amix part of the filter_complex
+    amix_filter = f"{''.join(amix_inputs)}amix=inputs={len(processed_audio_data)}:duration=longest[a_out]"
+    filter_complex_parts.append(amix_filter)
+    
     ffmpeg_command.extend(["-filter_complex", "".join(filter_complex_parts)])
-    
-    # Map the output audio stream
     ffmpeg_command.extend(["-map", "[a_out]"])
-    
-    # Output file
     ffmpeg_command.append(str(output_filepath))
 
     logger.debug(f"FFmpeg command: {' '.join(ffmpeg_command)}")
 
     try:
         result = subprocess.run(ffmpeg_command, check=True, capture_output=True, text=True)
-        logger.info(f"Successfully combined {len(temp_wav_files)} caption audio files into {output_filepath}.")
+        logger.info(f"Successfully combined {len(processed_audio_data)} caption audio files into {output_filepath}.")
         if result.stderr:
             logger.debug(f"FFmpeg stderr:\n{result.stderr}")
         return output_filepath
@@ -218,7 +253,7 @@ def speak_captions(video_captions: VideoCaptions, tts_output: TTSOutput, tts_con
         raise
     finally:
         # Clean up temporary WAV files
-        for wav_path in temp_wav_files:
+        for wav_path, _, _ in processed_audio_data:
             if wav_path.exists():
                 wav_path.unlink()
                 logger.debug(f"Cleaned up temporary WAV file: {wav_path}")

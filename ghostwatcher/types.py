@@ -175,7 +175,7 @@ class LLMConfig(BaseModel):
     )
 
 
-class TTSConfig(baseModel):
+class TTSConfig(BaseModel):
     """Config variables for the TTS output of captions."""
 
     padding_seconds: int = Field(
