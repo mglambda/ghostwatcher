@@ -141,6 +141,10 @@ class FrameCollection(BaseModel):
         """Load a frame collection from a JSON file."""
         return FrameCollection.model_validate_json(filepath.read_text())
 
+
+    def get_sorted_frames(self) -> List[FrameImage]:
+        return sorted(self.frames, key=lambda f: f.seek_pos)
+        
 class LLMConfig(BaseModel):
     """Configuration parameters for the image description generation that are used with the LLM backend."""
 
@@ -182,6 +186,12 @@ class TTSConfig(BaseModel):
         default = 4,
         description = "Minimum amount of silence (in seconds) between two spoken captions."
     )
+
+    caption_volume: float = Field(
+        default = 1.5,
+        description = "Factor to apply to TTS caption volume."
+    )
+    
 class Caption(BaseModel):
     """A single caption line for a video. A caption line describes the state of affairs displayed in the video at a given moment, in the context of the entire video."""
 
@@ -276,7 +286,7 @@ class VoxinOutput(BaseModel):
         command = [
             "voxin-say",
             "-w", str(output_path),
-            "-s", str(self.rate),
+            "-S", str(self.rate),
             text
         ]
 

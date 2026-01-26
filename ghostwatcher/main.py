@@ -104,9 +104,10 @@ def caption_frames(frame_collection: FrameCollection, llm_config: LLMConfig, pro
 
     num_frames = len(frame_collection.frames)
     batch_size = llm_config.caption_batch_size
-
+    frames = frame_collection.get_sorted_frames()
+    
     for i in range(0, num_frames, batch_size):
-        batch_frames = frame_collection.frames[i : i + batch_size]
+        batch_frames = frames[i : i + batch_size]
         
         if not batch_frames:
             continue
@@ -257,7 +258,12 @@ def speak_captions(video_captions: VideoCaptions, tts_output: TTSOutput, tts_con
             if wav_path.exists():
                 wav_path.unlink()
                 logger.debug(f"Cleaned up temporary WAV file: {wav_path}")
-                
+
+def tts_post_processing(original_video_file: Path, tts_captions_file: Path, tts_config: TTSConfig, prog: Program) -> Path:
+    """Applies post processing to tts wave file and then merges the wave file onto the original video, into a new file, which is returned."""
+    logger.info(f"Starting post processing for caption track {tts_captions_file} for original video {original_video_file}.")
+    # FILL THIS IN
+
 def setup_logging(debug: bool, log_timestamps: bool) -> None:
     """Configures loguru logger based on debug and timestamp flags."""
     logger.remove()  # Remove default handler
@@ -367,6 +373,12 @@ def main() -> None:
         help="Prompt used for basic image descriptions.",
     )
 
+    parser.add_argument(
+        "--tts-caption-volume",
+        type=float,
+        default=1.5,
+        help="Factor to apply to the resulting TTS caption volume. 1.0 Means no change, while the default of 1.5 will boost the voice over volume by 50%."
+    )
     args = parser.parse_args()
     # ensure logical consistency with the forcing
     if args.force_frame_extraction:
@@ -504,11 +516,14 @@ def main() -> None:
     # 4. step: Generate wave file based on captions
     # pick a ttsoutput type, for now we always do spd
     tts_output = VoxinOutput(rate = 250)
-    tts_config = TTSConfig()
+    tts_config = TTSConfig(caption_volume = args.tts_caption_volume)
     logger.info(f"Generating TTS captions.")
     combined_wave_file = speak_captions(video_captions, tts_output, tts_config, prog)
     logger.info(f"TTS Captions placed in {combined_wave_file}")
     
+    new_video_file = tts_post_processing(args.video_file, combined_wave_file, tts_config, prog)
+    logger.info(f"Done. Final video: {new_video_file}")
+
     # Explicitly clean up temporary directory if one was created
     if temp_dir_obj:
         temp_dir_obj.cleanup()
