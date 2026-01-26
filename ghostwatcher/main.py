@@ -280,12 +280,13 @@ def tts_post_processing(original_video_file: Path, tts_captions_file: Path, tts_
     merge_command = [
         "ffmpeg",
         "-y",  # Overwrite output file without asking
-        "-i", str(original_video_file),  # Input video
-        "-i", str(adjusted_audio_file),  # Input adjusted audio
+        "-i", str(original_video_file),  # Input video (0)
+        "-i", str(adjusted_audio_file),  # Input adjusted audio (1)
+        "-filter_complex", "[0:a][1:a]amix=inputs=2[a_out]", # Mix original audio and TTS audio
+        "-map", "0:v:0",  # Map video stream from first input
+        "-map", "[a_out]", # Map the combined audio stream
         "-c:v", "copy",  # Copy video stream without re-encoding
         "-c:a", "aac",    # Re-encode audio to AAC (common format)
-        "-map", "0:v:0",  # Map video stream from first input
-        "-map", "1:a:0",  # Map audio stream from second input
         str(output_video_file)
     ]
 
@@ -408,6 +409,12 @@ def main() -> None:
 
 
     parser.add_argument(
+        "--skip-frame-description",
+        action=argparse.BooleanOptionalAction,        
+        help = "Do not generate descriptions for extracted frames. This is incompatible with --force-frame-description"
+    )
+
+    parser.add_argument(
         "--force-tts-captions",
         action=argparse.BooleanOptionalAction,
         help="Force regeneration of captions for the tts overlay, even if they already exist.",
@@ -437,6 +444,13 @@ def main() -> None:
     if args.force_frame_extraction:
         args.force_frame_description = True
 
+    if args.skip_frame_description:
+        if args.force_frame_extraction:
+            raise RuntimeError(f"Aborted. Cannot combine --skip-frame-description with --force-frame-extraction. Pick one.")
+
+        if args.force_frame_description:
+            raise RuntimeError(f"Aborted. Cannot combine --skip-frame-description with --force-frame-description. Pick one.")
+        
     # Setup logging
     setup_logging(args.debug, args.log_timestamps)
 
@@ -541,14 +555,18 @@ def main() -> None:
         for frame in frame_collection.frames:
             frame.description = None
         
-    
-    llm_config = LLMConfig(
-        batch_size=args.batch_size, description_prompt=args.description_prompt
-    )
-    logger.debug(f"LLM Configuration: {llm_config.model_dump_json(indent=2)}")
 
-    described_frame_collection = describe_frames(frame_collection, llm_config, prog)
-    logger.info("Finished frame descriptions.")
+    if args.skip_frame_description:
+        logger.info(f"Skipping generation of descriptions for extracted frames.")
+        described_frame_collection = deepcopy(frame_collection)
+    else:
+        llm_config = LLMConfig(
+            batch_size=args.batch_size, description_prompt=args.description_prompt
+        )
+        logger.debug(f"LLM Configuration: {llm_config.model_dump_json(indent=2)}")
+
+        described_frame_collection = describe_frames(frame_collection, llm_config, prog)
+        logger.info("Finished frame descriptions.")
 
     # temporary for development - just output the descriptions
     print(f"=== OUTPUT ===")
