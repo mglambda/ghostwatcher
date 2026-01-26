@@ -385,7 +385,7 @@ def main() -> None:
 
     # 4. step: Generate wave file based on captions
     # pick a ttsoutput type, for now we always do spd
-    tts_output = SPDOutput(rate = 250)
+    tts_output = VoxinOutput(rate = 250)
     combined_wave_file = speak_captions(video_captions, tts_output, prog)
 
     

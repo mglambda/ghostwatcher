@@ -4,6 +4,7 @@
 from typing import *
 import re
 import json
+import subprocess
 from pydantic import BaseModel, Field
 from enum import StrEnum
 from pathlib import Path
@@ -247,11 +248,42 @@ class TTSOutput(Protocol):
         """Takes a string to speak and renders it to a wave file, then returns the path to that wave file."""
         pass
 
-class SPDOutput(BaseModel):
-    """Outputs wave files using the linux based spd-say program."""
+class VoxinOutput(BaseModel):
+    """Outputs wave files using the linux based voxin-say program (via espeak for file output)."""
 
     rate: int = 250
         
     def render(self, text: str) -> Path:
-        # FILL THIS IN
-        pass
+        import tempfile
+        import subprocess
+        from pathlib import Path
+
+        # Create a temporary file for the wav output
+        # We use delete=False because we want the file to persist so we can return its path
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            output_path = Path(tmp.name)
+
+        # -w: output to wav file
+        # -s: speed (words per minute)
+        command = [
+            "voxin-say",
+            "-w", str(output_path),
+            "-s", str(self.rate),
+            text
+        ]
+
+        logger.debug(f"Rendering TTS with command: {' '.join(command)}")
+
+        try:
+            subprocess.run(command, check=True, capture_output=True, text=True)
+            return output_path
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to render TTS with espeak. Error: {e.stderr}")
+            if output_path.exists():
+                output_path.unlink()
+            raise
+        except FileNotFoundError:
+            logger.error("espeak command not found. Please ensure espeak or espeak-ng is installed.")
+            if output_path.exists():
+                output_path.unlink()
+            raise
