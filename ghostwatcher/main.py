@@ -262,7 +262,66 @@ def speak_captions(video_captions: VideoCaptions, tts_output: TTSOutput, tts_con
 def tts_post_processing(original_video_file: Path, tts_captions_file: Path, tts_config: TTSConfig, prog: Program) -> Path:
     """Applies post processing to tts wave file and then merges the wave file onto the original video, into a new file, which is returned."""
     logger.info(f"Starting post processing for caption track {tts_captions_file} for original video {original_video_file}.")
-    # FILL THIS IN
+
+    # 1. Adjust the volume of the wave file
+    adjusted_audio_file = prog.work_dir / "tts_captions_adjusted_volume.wav"
+    volume_command = [
+        "ffmpeg",
+        "-y",  # Overwrite output file without asking
+        "-i", str(tts_captions_file),
+        "-filter:a", f"volume={tts_config.caption_volume}",
+        str(adjusted_audio_file)
+    ]
+
+    try:
+        logger.debug(f"FFmpeg volume adjustment command: {' '.join(volume_command)}")
+        subprocess.run(volume_command, check=True, capture_output=True, text=True)
+        logger.info(f"Adjusted volume for {tts_captions_file} to {tts_config.caption_volume} and saved to {adjusted_audio_file}.")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to adjust volume for TTS captions. Error: {e}")
+        logger.error(f"FFmpeg stdout:\n{e.stdout}")
+        logger.error(f"FFmpeg stderr:\n{e.stderr}")
+        raise
+    except FileNotFoundError:
+        logger.error("FFmpeg command not found. Please ensure FFmpeg is installed and available in your system's PATH.")
+        raise
+
+    # 2. Add the adjusted wave file as a new track to the video
+    # The output video file will be in the output_dir, not work_dir
+    output_video_file = prog.output_dir / f"{original_video_file.stem}_with_captions.mp4"
+
+    merge_command = [
+        "ffmpeg",
+        "-y",  # Overwrite output file without asking
+        "-i", str(original_video_file),  # Input video
+        "-i", str(adjusted_audio_file),  # Input adjusted audio
+        "-c:v", "copy",  # Copy video stream without re-encoding
+        "-c:a", "aac",    # Re-encode audio to AAC (common format)
+        "-map", "0:v:0",  # Map video stream from first input
+        "-map", "1:a:0",  # Map audio stream from second input
+        str(output_video_file)
+    ]
+
+    try:
+        logger.debug(f"FFmpeg merge command: {' '.join(merge_command)}")
+        result = subprocess.run(merge_command, check=True, capture_output=True, text=True)
+        logger.info(f"Successfully merged TTS captions into new video file: {output_video_file}.")
+        if result.stderr:
+            logger.debug(f"FFmpeg merge stderr:\n{result.stderr}")
+        return output_video_file
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to merge TTS captions with video. Error: {e}")
+        logger.error(f"FFmpeg stdout:\n{e.stdout}")
+        logger.error(f"FFmpeg stderr:\n{e.stderr}")
+        raise
+    except FileNotFoundError:
+        logger.error("FFmpeg command not found. Please ensure FFmpeg is installed and available in your system's PATH.")
+        raise
+    finally:
+        # Clean up temporary adjusted audio file
+        if adjusted_audio_file.exists():
+            adjusted_audio_file.unlink()
+            logger.debug(f"Cleaned up temporary adjusted audio file: {adjusted_audio_file}")
 
 def setup_logging(debug: bool, log_timestamps: bool) -> None:
     """Configures loguru logger based on debug and timestamp flags."""
