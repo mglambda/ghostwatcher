@@ -137,7 +137,7 @@ def caption_frames(frame_collection: FrameCollection, llm_config: LLMConfig, pro
         
     return video_captions
 
-def speak_captions(video_captions: VideoCaptions, tts_output: TTSOutput, prog: Program) -> Path:
+def speak_captions(video_captions: VideoCaptions, tts_output: TTSOutput, tts_config: TTSConfig, prog: Program) -> Path:
     """Speaks all captions in the video captions object with a provided TTS output type and combines the outputs into a single wave file that speaks the captions at their appropriate times. Returns the combined wave files filepath."""
     
     if not video_captions.captions:
@@ -469,8 +469,9 @@ def main() -> None:
     # 4. step: Generate wave file based on captions
     # pick a ttsoutput type, for now we always do spd
     tts_output = VoxinOutput(rate = 250)
+    tts_config = TTSConfig()
     logger.info(f"Generating TTS captions.")
-    combined_wave_file = speak_captions(video_captions, tts_output, prog)
+    combined_wave_file = speak_captions(video_captions, tts_output, tts_config, prog)
     logger.info(f"TTS Captions placed in {combined_wave_file}")
     
     # Explicitly clean up temporary directory if one was created

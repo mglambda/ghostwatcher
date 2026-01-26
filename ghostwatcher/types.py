@@ -174,6 +174,14 @@ class LLMConfig(BaseModel):
         description = "The prompt given to the LLM to generate captions."
     )
 
+
+class TTSConfig(baseModel):
+    """Config variables for the TTS output of captions."""
+
+    padding_seconds: int = Field(
+        default = 4,
+        description = "Minimum amount of silence (in seconds) between two spoken captions."
+    )
 class Caption(BaseModel):
     """A single caption line for a video. A caption line describes the state of affairs displayed in the video at a given moment, in the context of the entire video."""
 
