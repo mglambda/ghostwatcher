@@ -269,7 +269,7 @@ class TTSOutput(Protocol):
 class VoxinOutput(BaseModel):
     """Outputs wave files using the linux based voxin-say program (via espeak for file output)."""
 
-    rate: int = 250
+    rate: int
         
     def render(self, text: str) -> Path:
         import tempfile

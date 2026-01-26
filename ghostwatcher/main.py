@@ -118,7 +118,7 @@ def caption_frames(frame_collection: FrameCollection, llm_config: LLMConfig, pro
         for k, frame in enumerate(batch_frames):
             # Only include frames that have a description
             if frame.description:
-                batch_preamble_str += f"Frame {k+1} (at {frame.seek_pos:.2f}s): {frame.description}\n"
+                batch_preamble_str += f"### Frame {k+1} (at seek_pos: {frame.seek_pos:.2f}s)\n\n {frame.description}\n"
             else:
                 logger.warning(f"Frame {k+1} in batch (at {frame.seek_pos:.2f}s) has no description. Skipping in preamble.")
 
@@ -418,6 +418,13 @@ def main() -> None:
         action=argparse.BooleanOptionalAction,
         help="Force regeneration of frame collection descriptions.",
     )
+
+
+    parser.add_argument(
+        "--force-tts-captions",
+        action=argparse.BooleanOptionalAction,
+        help="Force regeneration of captions for the tts overlay, even if they already exist.",
+    )
     
     parser.add_argument(
         "--batch-size",
@@ -574,7 +581,7 @@ def main() -> None:
 
     # 4. step: Generate wave file based on captions
     # pick a ttsoutput type, for now we always do spd
-    tts_output = VoxinOutput(rate = 250)
+    tts_output = VoxinOutput(rate = 180)
     tts_config = TTSConfig(caption_volume = args.tts_caption_volume)
     logger.info(f"Generating TTS captions.")
     combined_wave_file = speak_captions(video_captions, tts_output, tts_config, prog)
