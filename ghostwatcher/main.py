@@ -88,20 +88,7 @@ def describe_frames(
 def caption_frames(frame_collection: FrameCollection, llm_config: LLMConfig, prog: Program) -> VideoCaptions:
     """Generates short time-sensitive video captions based on a frame collection."""
     video_captions = VideoCaptions(video_filepath=frame_collection.video_filepath, captions=[])
-    
-    # Load existing captions if available (no force flag for now)
     captions_path = prog.get_captions_path()
-    if captions_path.is_file():
-        try:
-            existing_captions = VideoCaptions.load(captions_path)
-            if existing_captions.video_filepath == frame_collection.video_filepath:
-                video_captions = existing_captions
-                logger.info(f"Loaded existing captions from {captions_path}.")
-            else:
-                logger.warning(f"Existing captions file {captions_path} belongs to a different video. Starting fresh.")
-        except Exception as e:
-            logger.error(f"Failed to load existing captions from {captions_path}: {e}. Starting fresh.")
-
     num_frames = len(frame_collection.frames)
     batch_size = llm_config.caption_batch_size
     frames = frame_collection.get_sorted_frames()
@@ -570,8 +557,22 @@ def main() -> None:
         print(frame.description)
 
     # 3. step - caption generation
-    logger.info(f"Generating captions.")
-    video_captions = caption_frames(described_frame_collection, llm_config, prog)
+    captions_path = prog.get_captions_path()
+    if captions_path.is_file() and not(args.force_captions):
+        try:
+            existing_captions = VideoCaptions.load(captions_path)
+        except Exception as e:
+            logger.error(f"Failed loading captions. Reason: {e}") 
+            raise RuntimeError(f"Failed to load existing captions from {captions_path}: {e}. Try starting with --force-captions.")
+            
+        if existing_captions.video_filepath == frame_collection.video_filepath:
+            video_captions = existing_captions
+            logger.info(f"Loaded existing captions from {captions_path}.")                
+        else:
+            raise RuntimeError(f"Found existing caption file {captions_path} but its video filepath {existing_captions.video_filepath} does not match original video file {frame_collection.video_filepath}. Too confusing. aborting. Try restarting with --force-captions to regenerate matching captions.")
+    else:
+        logger.info(f"Generating captions.")
+        video_captions = caption_frames(described_frame_collection, llm_config, prog)
 
     # output captions - again temporary during development
     print(f"=== captions ==")
