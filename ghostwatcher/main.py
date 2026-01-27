@@ -15,15 +15,19 @@ from loguru import logger
 from .types import *
 from .extraction import KeyFrameExtractor
 
+
 # Helper function to get audio duration
 def get_audio_duration(filepath: Path) -> Optional[float]:
     """Get the duration of an audio file in seconds using ffprobe."""
     command = [
         "ffprobe",
-        "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        str(filepath)
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        str(filepath),
     ]
     try:
         result = subprocess.run(command, check=True, capture_output=True, text=True)
@@ -32,7 +36,9 @@ def get_audio_duration(filepath: Path) -> Optional[float]:
         logger.error(f"Failed to get audio duration for {filepath}: {e}")
         return None
     except FileNotFoundError:
-        logger.error("ffprobe command not found. Please ensure FFmpeg (which includes ffprobe) is installed and available in your system's PATH.")
+        logger.error(
+            "ffprobe command not found. Please ensure FFmpeg (which includes ffprobe) is installed and available in your system's PATH."
+        )
         return None
 
 
@@ -82,24 +88,33 @@ def describe_frames(
 
         # save intermediate progress
         new_frame_collection.save(prog.get_frame_collection_path())
-        
+
     return new_frame_collection
 
-def caption_frames(frame_collection: FrameCollection, llm_config: LLMConfig, prog: Program) -> VideoCaptions:
+
+def caption_frames(
+    frame_collection: FrameCollection, llm_config: LLMConfig, prog: Program
+) -> VideoCaptions:
     """Generates short time-sensitive video captions based on a frame collection."""
-    video_captions = VideoCaptions(video_filepath=frame_collection.video_filepath, captions=[])
+    video_captions = VideoCaptions(
+        video_filepath=frame_collection.video_filepath, captions=[]
+    )
     captions_path = prog.get_captions_path()
     num_frames = len(frame_collection.frames)
     batch_size = llm_config.caption_batch_size
+    num_batches = num_frames // batch_size
     frames = frame_collection.get_sorted_frames()
-    
+
     for i in range(0, num_frames, batch_size):
+        logger.info(f"Captioning batch {num_batches - ((num_frames - i) // batch_size)} of {num_batches}")
         batch_frames = frames[i : i + batch_size]
-        
+
         if not batch_frames:
             continue
 
-        logger.info(f"Generating captions for batch {i // batch_size + 1} (frames {i+1} to {min(i + batch_size, num_frames)}).")
+        logger.info(
+            f"Generating captions for batch {i // batch_size + 1} (frames {i+1} to {min(i + batch_size, num_frames)})."
+        )
 
         batch_preamble_str = ""
         for k, frame in enumerate(batch_frames):
@@ -107,10 +122,14 @@ def caption_frames(frame_collection: FrameCollection, llm_config: LLMConfig, pro
             if frame.description:
                 batch_preamble_str += f"### Frame {k+1} (at seek_pos: {frame.seek_pos:.2f}s)\n\n {frame.description}\n"
             else:
-                logger.warning(f"Frame {k+1} in batch (at {frame.seek_pos:.2f}s) has no description. Skipping in preamble.")
+                logger.warning(
+                    f"Frame {k+1} in batch (at {frame.seek_pos:.2f}s) has no description. Skipping in preamble."
+                )
 
         if not batch_preamble_str:
-            logger.warning(f"No described frames in batch {i // batch_size + 1}. Skipping LLM call.")
+            logger.warning(
+                f"No described frames in batch {i // batch_size + 1}. Skipping LLM call."
+            )
             continue
 
         prompt = f"""## Video Frames
@@ -124,35 +143,49 @@ def caption_frames(frame_collection: FrameCollection, llm_config: LLMConfig, pro
         logger.debug(f"Prompt for batch {i // batch_size + 1}:\n{prompt}")
 
         try:
-            prog.box.clear_history() # Clear history for each batch to avoid context overflow
+            prog.box.clear_history()  # Clear history for each batch to avoid context overflow
             batch_video_captions = prog.box.new(VideoCaptions, prompt)
-            
+
             if error_str := prog.box.get_last_error():
                 logger.error(f"ghostbox (captioning): {error_str}")
 
             video_captions.captions.extend(batch_video_captions.captions)
-            logger.debug(f"Generated {len(batch_video_captions.captions)} captions for batch {i // batch_size + 1}.")
+            logger.debug(
+                f"Generated {len(batch_video_captions.captions)} captions for batch {i // batch_size + 1}."
+            )
             for caption in batch_video_captions.captions:
-                logger.debug(f"  - Caption at {caption.seek_pos:.2f}s: {caption.content}")
+                logger.debug(
+                    f"  - Caption at {caption.seek_pos:.2f}s: {caption.content}"
+                )
 
         except Exception as e:
-            logger.error(f"Failed to generate captions for batch {i // batch_size + 1}: {e}")
+            logger.error(
+                f"Failed to generate captions for batch {i // batch_size + 1}: {e}"
+            )
             # Continue to next batch even if one fails, to save partial progress
 
         # Save intermediate progress after each batch
         video_captions.save(captions_path)
         logger.info(f"Saved intermediate captions to {captions_path}.")
-        
+
     return video_captions
 
-def speak_captions(video_captions: VideoCaptions, tts_output: TTSOutput, tts_config: TTSConfig, prog: Program) -> Path:
+
+def speak_captions(
+    video_captions: VideoCaptions,
+    tts_output: TTSOutput,
+    tts_config: TTSConfig,
+    prog: Program,
+) -> Path:
     """Speaks all captions in the video captions object with a provided TTS output type and combines the outputs into a single wave file that speaks the captions at their appropriate times. Returns the combined wave files filepath."""
-    
+
     if not video_captions.captions:
         logger.info("No captions to speak. Returning empty path.")
         return Path("")
 
-    processed_audio_data: List[Tuple[Path, float, float]] = [] # (wav_path, actual_start_time, duration)
+    processed_audio_data: List[Tuple[Path, float, float]] = (
+        []
+    )  # (wav_path, actual_start_time, duration)
     next_available_time = 0.0
 
     # 1. Render each caption to a temporary WAV file, checking for overlaps
@@ -164,61 +197,71 @@ def speak_captions(video_captions: VideoCaptions, tts_output: TTSOutput, tts_con
                 f"Skipping caption '{caption.content[:50]}...' at {intended_start_time:.2f}s "
                 f"due to overlap. Next available time is {next_available_time:.2f}s."
             )
-            continue # Skip this caption
+            continue  # Skip this caption
 
         try:
             wav_path = tts_output.render(caption.content)
             audio_duration = get_audio_duration(wav_path)
 
             if audio_duration is None:
-                logger.error(f"Could not determine duration for audio file {wav_path}. Skipping caption.")
+                logger.error(
+                    f"Could not determine duration for audio file {wav_path}. Skipping caption."
+                )
                 if wav_path.exists():
                     wav_path.unlink()
                 continue
 
             actual_start_time = intended_start_time
             processed_audio_data.append((wav_path, actual_start_time, audio_duration))
-            
-            next_available_time = actual_start_time + audio_duration + tts_config.padding_seconds
-            
+
+            next_available_time = (
+                actual_start_time + audio_duration + tts_config.padding_seconds
+            )
+
             logger.debug(
                 f"Rendered caption '{caption.content[:50]}...' to {wav_path} "
                 f"starting at {actual_start_time:.2f}s (duration: {audio_duration:.2f}s). "
                 f"Next available time: {next_available_time:.2f}s."
             )
-            
+
         except Exception as e:
-            logger.error(f"Failed to render audio for caption '{caption.content[:50]}...' at {intended_start_time:.2f}s: {e}")
+            logger.error(
+                f"Failed to render audio for caption '{caption.content[:50]}...' at {intended_start_time:.2f}s: {e}"
+            )
             # Continue to next caption, but ensure any created temp file is cleaned up in finally block
 
     if not processed_audio_data:
-        logger.error("No audio files were successfully rendered or all were skipped. Cannot create combined audio.")
+        logger.error(
+            "No audio files were successfully rendered or all were skipped. Cannot create combined audio."
+        )
         return Path("")
 
     # 2. Construct the ffmpeg command to merge/mix the delayed audio files
     output_filepath = prog.get_tts_captions_path()
-    
+
     ffmpeg_command = [
         "ffmpeg",
-        "-y", # Overwrite output file without asking
+        "-y",  # Overwrite output file without asking
     ]
-    
+
     filter_complex_parts: List[str] = []
     amix_inputs: List[str] = []
 
     for j, (wav_path, actual_start_time, _) in enumerate(processed_audio_data):
         ffmpeg_command.extend(["-i", str(wav_path)])
-        
+
         delay_ms = int(actual_start_time * 1000)
         stream_label = f"a{j}"
-        
-        filter_complex_parts.append(f"[{j}:a]adelay={delay_ms}|{delay_ms}[{stream_label}];")
+
+        filter_complex_parts.append(
+            f"[{j}:a]adelay={delay_ms}|{delay_ms}[{stream_label}];"
+        )
         amix_inputs.append(f"[{stream_label}]")
-            
+
     # Build the amix part of the filter_complex
     amix_filter = f"{''.join(amix_inputs)}amix=inputs={len(processed_audio_data)}:duration=longest[a_out]"
     filter_complex_parts.append(amix_filter)
-    
+
     ffmpeg_command.extend(["-filter_complex", "".join(filter_complex_parts)])
     ffmpeg_command.extend(["-map", "[a_out]"])
     ffmpeg_command.append(str(output_filepath))
@@ -226,8 +269,12 @@ def speak_captions(video_captions: VideoCaptions, tts_output: TTSOutput, tts_con
     logger.debug(f"FFmpeg command: {' '.join(ffmpeg_command)}")
 
     try:
-        result = subprocess.run(ffmpeg_command, check=True, capture_output=True, text=True)
-        logger.info(f"Successfully combined {len(processed_audio_data)} caption audio files into {output_filepath}.")
+        result = subprocess.run(
+            ffmpeg_command, check=True, capture_output=True, text=True
+        )
+        logger.info(
+            f"Successfully combined {len(processed_audio_data)} caption audio files into {output_filepath}."
+        )
         if result.stderr:
             logger.debug(f"FFmpeg stderr:\n{result.stderr}")
         return output_filepath
@@ -235,9 +282,11 @@ def speak_captions(video_captions: VideoCaptions, tts_output: TTSOutput, tts_con
         logger.error(f"Failed to combine caption audio files with FFmpeg. Error: {e}")
         logger.error(f"FFmpeg stdout:\n{e.stdout}")
         logger.error(f"FFmpeg stderr:\n{e.stderr}")
-        raise # Re-raise to indicate failure
+        raise  # Re-raise to indicate failure
     except FileNotFoundError:
-        logger.error("FFmpeg command not found. Please ensure FFmpeg is installed and available in your system's PATH.")
+        logger.error(
+            "FFmpeg command not found. Please ensure FFmpeg is installed and available in your system's PATH."
+        )
         raise
     finally:
         # Clean up temporary WAV files
@@ -246,54 +295,81 @@ def speak_captions(video_captions: VideoCaptions, tts_output: TTSOutput, tts_con
                 wav_path.unlink()
                 logger.debug(f"Cleaned up temporary WAV file: {wav_path}")
 
-def tts_post_processing(original_video_file: Path, tts_captions_file: Path, tts_config: TTSConfig, prog: Program) -> Path:
+
+def tts_post_processing(
+    original_video_file: Path,
+    tts_captions_file: Path,
+    tts_config: TTSConfig,
+    prog: Program,
+) -> Path:
     """Applies post processing to tts wave file and then merges the wave file onto the original video, into a new file, which is returned."""
-    logger.info(f"Starting post processing for caption track {tts_captions_file} for original video {original_video_file}.")
+    logger.info(
+        f"Starting post processing for caption track {tts_captions_file} for original video {original_video_file}."
+    )
 
     # 1. Adjust the volume of the wave file
     adjusted_audio_file = prog.work_dir / "tts_captions_adjusted_volume.wav"
     volume_command = [
         "ffmpeg",
         "-y",  # Overwrite output file without asking
-        "-i", str(tts_captions_file),
-        "-filter:a", f"volume={tts_config.caption_volume}",
-        str(adjusted_audio_file)
+        "-i",
+        str(tts_captions_file),
+        "-filter:a",
+        f"volume={tts_config.caption_volume}",
+        str(adjusted_audio_file),
     ]
 
     try:
         logger.debug(f"FFmpeg volume adjustment command: {' '.join(volume_command)}")
         subprocess.run(volume_command, check=True, capture_output=True, text=True)
-        logger.info(f"Adjusted volume for {tts_captions_file} to {tts_config.caption_volume} and saved to {adjusted_audio_file}.")
+        logger.info(
+            f"Adjusted volume for {tts_captions_file} to {tts_config.caption_volume} and saved to {adjusted_audio_file}."
+        )
     except subprocess.CalledProcessError as e:
         logger.error(f"Failed to adjust volume for TTS captions. Error: {e}")
         logger.error(f"FFmpeg stdout:\n{e.stdout}")
         logger.error(f"FFmpeg stderr:\n{e.stderr}")
         raise
     except FileNotFoundError:
-        logger.error("FFmpeg command not found. Please ensure FFmpeg is installed and available in your system's PATH.")
+        logger.error(
+            "FFmpeg command not found. Please ensure FFmpeg is installed and available in your system's PATH."
+        )
         raise
 
     # 2. Add the adjusted wave file as a new track to the video
     # The output video file will be in the output_dir, not work_dir
-    output_video_file = prog.output_dir / f"{original_video_file.stem}_with_captions.mp4"
+    output_video_file = (
+        prog.output_dir / f"{original_video_file.stem}_with_captions.mp4"
+    )
 
     merge_command = [
         "ffmpeg",
         "-y",  # Overwrite output file without asking
-        "-i", str(original_video_file),  # Input video (0)
-        "-i", str(adjusted_audio_file),  # Input adjusted audio (1)
-        "-filter_complex", "[0:a][1:a]amix=inputs=2[a_out]", # Mix original audio and TTS audio
-        "-map", "0:v:0",  # Map video stream from first input
-        "-map", "[a_out]", # Map the combined audio stream
-        "-c:v", "copy",  # Copy video stream without re-encoding
-        "-c:a", "aac",    # Re-encode audio to AAC (common format)
-        str(output_video_file)
+        "-i",
+        str(original_video_file),  # Input video (0)
+        "-i",
+        str(adjusted_audio_file),  # Input adjusted audio (1)
+        "-filter_complex",
+        "[0:a][1:a]amix=inputs=2[a_out]",  # Mix original audio and TTS audio
+        "-map",
+        "0:v:0",  # Map video stream from first input
+        "-map",
+        "[a_out]",  # Map the combined audio stream
+        "-c:v",
+        "copy",  # Copy video stream without re-encoding
+        "-c:a",
+        "aac",  # Re-encode audio to AAC (common format)
+        str(output_video_file),
     ]
 
     try:
         logger.debug(f"FFmpeg merge command: {' '.join(merge_command)}")
-        result = subprocess.run(merge_command, check=True, capture_output=True, text=True)
-        logger.info(f"Successfully merged TTS captions into new video file: {output_video_file}.")
+        result = subprocess.run(
+            merge_command, check=True, capture_output=True, text=True
+        )
+        logger.info(
+            f"Successfully merged TTS captions into new video file: {output_video_file}."
+        )
         if result.stderr:
             logger.debug(f"FFmpeg merge stderr:\n{result.stderr}")
         return output_video_file
@@ -303,13 +379,18 @@ def tts_post_processing(original_video_file: Path, tts_captions_file: Path, tts_
         logger.error(f"FFmpeg stderr:\n{e.stderr}")
         raise
     except FileNotFoundError:
-        logger.error("FFmpeg command not found. Please ensure FFmpeg is installed and available in your system's PATH.")
+        logger.error(
+            "FFmpeg command not found. Please ensure FFmpeg is installed and available in your system's PATH."
+        )
         raise
     finally:
         # Clean up temporary adjusted audio file
         if adjusted_audio_file.exists():
             adjusted_audio_file.unlink()
-            logger.debug(f"Cleaned up temporary adjusted audio file: {adjusted_audio_file}")
+            logger.debug(
+                f"Cleaned up temporary adjusted audio file: {adjusted_audio_file}"
+            )
+
 
 def setup_logging(debug: bool, log_timestamps: bool) -> None:
     """Configures loguru logger based on debug and timestamp flags."""
@@ -393,13 +474,12 @@ def main() -> None:
         action=argparse.BooleanOptionalAction,
         help="Enable timestamps in log output.",
     )
-    
+
     parser.add_argument(
         "--force-frame-extraction",
         action=argparse.BooleanOptionalAction,
         help="Force frame extraction even if the output directory is not empty. This implies --force-frame-description.",
     )
-
 
     parser.add_argument(
         "--force-frame-description",
@@ -407,19 +487,18 @@ def main() -> None:
         help="Force regeneration of frame collection descriptions.",
     )
 
-
     parser.add_argument(
         "--skip-frame-description",
-        action=argparse.BooleanOptionalAction,        
-        help = "Do not generate descriptions for extracted frames. This is incompatible with --force-frame-description"
+        action=argparse.BooleanOptionalAction,
+        help="Do not generate descriptions for extracted frames. This is incompatible with --force-frame-description",
     )
 
     parser.add_argument(
-        "--force-tts-captions",
+        "--force-captions",
         action=argparse.BooleanOptionalAction,
         help="Force regeneration of captions for the tts overlay, even if they already exist.",
     )
-    
+
     parser.add_argument(
         "--batch-size",
         type=int,
@@ -437,7 +516,7 @@ def main() -> None:
         "--tts-caption-volume",
         type=float,
         default=1.5,
-        help="Factor to apply to the resulting TTS caption volume. 1.0 Means no change, while the default of 1.5 will boost the voice over volume by 50%."
+        help="Factor to apply to the resulting TTS caption volume. 1.0 Means no change, while the default of 1.5 will boost the voice over volume by 50%.",
     )
     args = parser.parse_args()
     # ensure logical consistency with the forcing
@@ -446,11 +525,15 @@ def main() -> None:
 
     if args.skip_frame_description:
         if args.force_frame_extraction:
-            raise RuntimeError(f"Aborted. Cannot combine --skip-frame-description with --force-frame-extraction. Pick one.")
+            raise RuntimeError(
+                f"Aborted. Cannot combine --skip-frame-description with --force-frame-extraction. Pick one."
+            )
 
         if args.force_frame_description:
-            raise RuntimeError(f"Aborted. Cannot combine --skip-frame-description with --force-frame-description. Pick one.")
-        
+            raise RuntimeError(
+                f"Aborted. Cannot combine --skip-frame-description with --force-frame-description. Pick one."
+            )
+
     # Setup logging
     setup_logging(args.debug, args.log_timestamps)
 
@@ -527,11 +610,11 @@ def main() -> None:
     except Exception as e:
         logger.error(f"Failed to extract images. Reason: {e}")
         sys.exit(1)
-        
+
     try:
         # constructa frame collection, either from extracted images or from a previously saved collection
         frame_collection_path = prog.get_frame_collection_path()
-        if frame_collection_path.is_file() and not(args.force_frame_extraction):
+        if frame_collection_path.is_file() and not (args.force_frame_extraction):
             logger.info(f"Continuing with existing frame collection.")
             frame_collection = FrameCollection.load(frame_collection_path)
         else:
@@ -543,18 +626,19 @@ def main() -> None:
     except Exception as e:
         logger.error("Could not construct frame collection. {e}")
         sys.exit(1)
-        
+
     logger.info(
         f"Extracted {len(frame_collection.frames)} images from {frame_collection.video_filepath}."
     )
 
     # 2. step: description generation
     if args.force_frame_description:
-        logger.info(f"Ignoring previously generated frame descriptions (from --force-frame-description).")
+        logger.info(
+            f"Ignoring previously generated frame descriptions (from --force-frame-description)."
+        )
         # we do this by nulling them all
         for frame in frame_collection.frames:
             frame.description = None
-        
 
     if args.skip_frame_description:
         logger.info(f"Skipping generation of descriptions for extracted frames.")
@@ -576,18 +660,22 @@ def main() -> None:
 
     # 3. step - caption generation
     captions_path = prog.get_captions_path()
-    if captions_path.is_file() and not(args.force_captions):
+    if captions_path.is_file() and not (args.force_captions):
         try:
             existing_captions = VideoCaptions.load(captions_path)
         except Exception as e:
-            logger.error(f"Failed loading captions. Reason: {e}") 
-            raise RuntimeError(f"Failed to load existing captions from {captions_path}: {e}. Try starting with --force-captions.")
-            
+            logger.error(f"Failed loading captions. Reason: {e}")
+            raise RuntimeError(
+                f"Failed to load existing captions from {captions_path}: {e}. Try starting with --force-captions."
+            )
+
         if existing_captions.video_filepath == frame_collection.video_filepath:
             video_captions = existing_captions
-            logger.info(f"Loaded existing captions from {captions_path}.")                
+            logger.info(f"Loaded existing captions from {captions_path}.")
         else:
-            raise RuntimeError(f"Found existing caption file {captions_path} but its video filepath {existing_captions.video_filepath} does not match original video file {frame_collection.video_filepath}. Too confusing. aborting. Try restarting with --force-captions to regenerate matching captions.")
+            raise RuntimeError(
+                f"Found existing caption file {captions_path} but its video filepath {existing_captions.video_filepath} does not match original video file {frame_collection.video_filepath}. Too confusing. aborting. Try restarting with --force-captions to regenerate matching captions."
+            )
     else:
         logger.info(f"Generating captions.")
         video_captions = caption_frames(described_frame_collection, llm_config, prog)
@@ -600,13 +688,15 @@ def main() -> None:
 
     # 4. step: Generate wave file based on captions
     # pick a ttsoutput type, for now we always do spd
-    tts_output = VoxinOutput(rate = 180)
-    tts_config = TTSConfig(caption_volume = args.tts_caption_volume)
+    tts_output = VoxinOutput(rate=50)
+    tts_config = TTSConfig(caption_volume=args.tts_caption_volume)
     logger.info(f"Generating TTS captions.")
     combined_wave_file = speak_captions(video_captions, tts_output, tts_config, prog)
     logger.info(f"TTS Captions placed in {combined_wave_file}")
-    
-    new_video_file = tts_post_processing(args.video_file, combined_wave_file, tts_config, prog)
+
+    new_video_file = tts_post_processing(
+        args.video_file, combined_wave_file, tts_config, prog
+    )
     logger.info(f"Done. Final video: {new_video_file}")
 
     # Explicitly clean up temporary directory if one was created
