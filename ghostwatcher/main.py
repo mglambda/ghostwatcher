@@ -149,6 +149,10 @@ def caption_frames(
             if error_str := prog.box.get_last_error():
                 logger.error(f"ghostbox (captioning): {error_str}")
 
+            # check for -1.0 seek_pos
+            for caption in batch_video_captions.captions:
+                if caption.seek_pos < 0.0:
+                    logger.warning(f"Got {caption.seek_pos} on LLM generated caption. \"{caption.caption}\"") 
             video_captions.captions.extend(batch_video_captions.captions)
             logger.debug(
                 f"Generated {len(batch_video_captions.captions)} captions for batch {i // batch_size + 1}."
@@ -163,6 +167,7 @@ def caption_frames(
                 f"Failed to generate captions for batch {i // batch_size + 1}: {e}"
             )
             # Continue to next batch even if one fails, to save partial progress
+            continue
 
         # Save intermediate progress after each batch
         video_captions.save(captions_path)
@@ -176,12 +181,12 @@ def speak_captions(
     tts_output: TTSOutput,
     tts_config: TTSConfig,
     prog: Program,
-) -> Path:
+) -> Optional[Path]:
     """Speaks all captions in the video captions object with a provided TTS output type and combines the outputs into a single wave file that speaks the captions at their appropriate times. Returns the combined wave files filepath."""
 
     if not video_captions.captions:
         logger.info("No captions to speak. Returning empty path.")
-        return Path("")
+        return None
 
     processed_audio_data: List[Tuple[Path, float, float]] = (
         []
@@ -692,6 +697,9 @@ def main() -> None:
     tts_config = TTSConfig(caption_volume=args.tts_caption_volume)
     logger.info(f"Generating TTS captions.")
     combined_wave_file = speak_captions(video_captions, tts_output, tts_config, prog)
+    if not combined_wave_file:
+        logger.warning(f"No combined wave file found. Cannot merge captions into video. Finishing.")
+        return
     logger.info(f"TTS Captions placed in {combined_wave_file}")
 
     new_video_file = tts_post_processing(

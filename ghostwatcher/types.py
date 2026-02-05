@@ -169,7 +169,7 @@ class LLMConfig(BaseModel):
     )
 
     caption_batch_size: int = Field(
-        default = 16,
+        default = 8,
         description = "How many frames to cluster together when prompting the LLM to generate captions. Note that all the image descriptions will be included, so a larger batch size here will require more context and video ram. A smaller batch size can lead to the AI repeating itself in the captions, and being unable to find the actually relevant information."
     )
     
