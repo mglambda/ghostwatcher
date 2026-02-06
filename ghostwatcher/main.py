@@ -344,7 +344,7 @@ def tts_post_processing(
     # 2. Add the adjusted wave file as a new track to the video
     # The output video file will be in the output_dir, not work_dir
     output_video_file = (
-        prog.output_dir / f"{original_video_file.stem}_with_captions.mp4"
+        prog.output_dir / f"{original_video_file.stem}.{prog.character_folder}.captions.mp4"
     )
 
     merge_command = [
@@ -573,7 +573,7 @@ def main() -> None:
     )
 
     # construct program object - this finishes intialization
-    prog = Program(output_dir=args.output_directory, work_dir=work_dir, box=box)
+    prog = Program(output_dir=args.output_directory, work_dir=work_dir, character_folder = args.character_folder, box=box)
 
     # 1. step: extraction of images
     try:

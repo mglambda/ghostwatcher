@@ -4,6 +4,7 @@
 from typing import *
 import re
 import json
+import tempfile
 import subprocess
 from pydantic import BaseModel, Field
 from enum import StrEnum
@@ -270,24 +271,27 @@ class VoxinOutput(BaseModel):
     """Outputs wave files using the linux based voxin-say program (via espeak for file output)."""
 
     rate: int
-        
-    def render(self, text: str) -> Path:
-        import tempfile
-        import subprocess
-        from pathlib import Path
 
+    def render(self, text: str) -> Path:
         # Create a temporary file for the wav output
         # We use delete=False because we want the file to persist so we can return its path
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-            output_path = Path(tmp.name)
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_wav:
+            output_path = Path(tmp_wav.name)
+
+        # Create a temporary file for the text input to work around voxin-say bug
+        # where the last word is distorted when passed as a command line argument.
+        with tempfile.NamedTemporaryFile(mode='w', suffix=".txt", delete=False) as tmp_txt:
+            tmp_txt.write(text)
+            text_file_path = Path(tmp_txt.name)
 
         # -w: output to wav file
-        # -s: speed (words per minute)
+        # -S: speed (words per minute)
+        # -f: read from file
         command = [
             "voxin-say",
             "-w", str(output_path),
             "-S", str(self.rate),
-            text
+            "-f", str(text_file_path)
         ]
 
         logger.debug(f"Rendering TTS with command: {' '.join(command)}")
@@ -296,12 +300,16 @@ class VoxinOutput(BaseModel):
             subprocess.run(command, check=True, capture_output=True, text=True)
             return output_path
         except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to render TTS with espeak. Error: {e.stderr}")
+            logger.error(f"Failed to render TTS with voxin-say. Error: {e.stderr}")
             if output_path.exists():
                 output_path.unlink()
             raise
         except FileNotFoundError:
-            logger.error("espeak command not found. Please ensure espeak or espeak-ng is installed.")
+            logger.error("voxin-say command not found. Please ensure voxin is installed.")
             if output_path.exists():
                 output_path.unlink()
             raise
+        finally:
+            # Clean up the temporary text file
+            if text_file_path.exists():
+                text_file_path.unlink()    
