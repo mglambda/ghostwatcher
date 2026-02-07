@@ -649,8 +649,20 @@ def main() -> None:
         logger.info(f"Skipping generation of descriptions for extracted frames.")
         described_frame_collection = deepcopy(frame_collection)
     else:
+        # the description prompt has the following priority order
+        # command line arguments > character_folder var > default from LLMConfig
+        if args.description_prompt != LLMConfig.model_fields['description_prompt'].default:
+            # the user set the command line argument -> highest priority
+            description_prompt = args.description_prompt
+        elif (description_prompt_var := prog.box.get_var("description_prompt")) is not None:
+            # user kept thedefault -> is there a character folder var set?
+            description_prompt = description_prompt_var
+        else:
+            # use the default
+            description_prompt = LLMConfig.model_fields['description_prompt'].default
+            
         llm_config = LLMConfig(
-            batch_size=args.batch_size, description_prompt=args.description_prompt
+            batch_size=args.batch_size, description_prompt=description_prompt
         )
         logger.debug(f"LLM Configuration: {llm_config.model_dump_json(indent=2)}")
 
