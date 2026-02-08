@@ -310,7 +310,7 @@ class VoxinOutput(BaseModel):
         # Create a temporary file for the text input to work around voxin-say bug
         # where the last word is distorted when passed as a command line argument.
         with tempfile.NamedTemporaryFile(mode='w', suffix=".txt", delete=False) as tmp_txt:
-            tmp_txt.write(text)
+            tmp_txt.write(text + "\n")
             text_file_path = Path(tmp_txt.name)
 
         # -w: output to wav file
