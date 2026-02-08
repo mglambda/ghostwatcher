@@ -70,9 +70,9 @@ def describe_frames(
                 "Here is some timing information about the images from the video:\n"
             )
             for k, batch_frame in enumerate(batch_frames):
-                prompt += f" - Image {k} occurs at {batch_frame.seek_pos} seconds into the video.\n"
+                prompt += f" - Image {k} occurs at {timecode(batch_frame.seek_pos)} in the video.\n"
         else:
-            prompt += f"The image is a still frame from a video, occurring at {batch_frames[-1].seek_pos} seconds into it.\n"
+            prompt += f"The image is a still frame from a video, occurring at {timecode(batch_frames[-1].seek_pos)}.\n"
             prompt += llm_config.description_prompt
         try:
             prog.box.clear_history()
@@ -152,7 +152,7 @@ def caption_frames(
             # check for -1.0 seek_pos
             for caption in batch_video_captions.captions:
                 if caption.seek_pos < 0.0:
-                    logger.warning(f"Got {caption.seek_pos} on LLM generated caption. \"{caption.caption}\"") 
+                    logger.warning(f"Got {timecode(caption.seek_pos)} on LLM generated caption. \"{caption.caption}\"") 
             video_captions.captions.extend(batch_video_captions.captions)
             logger.debug(
                 f"Generated {len(batch_video_captions.captions)} captions for batch {i // batch_size + 1}."
@@ -672,7 +672,7 @@ def main() -> None:
     # temporary for development - just output the descriptions
     print(f"=== OUTPUT ===")
     for i, frame in enumerate(described_frame_collection.frames):
-        print(f"# {i} at {frame.seek_pos}s:")
+        print(f"# {i} at {timecode(frame.seek_pos)}:")
         print(frame.description)
 
     # 3. step - caption generation
@@ -700,7 +700,7 @@ def main() -> None:
     # output captions - again temporary during development
     print(f"=== captions ==")
     for i, caption in enumerate(video_captions.captions):
-        print(f"#{i} at {caption.seek_pos}")
+        print(f"#{i} at {timecode(caption.seek_pos)}")
         print(f"{caption.content}")
 
     # 4. step: Generate wave file based on captions

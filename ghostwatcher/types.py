@@ -204,7 +204,12 @@ class LLMConfig(BaseModel):
         description = "The prompt given to the LLM to generate captions."
     )
 
+    summary_batch_size: int = Field(
+        default = 10
+        description = "How many frames to look at simultaneously when building summaries."
+    )
 
+    
 class TTSConfig(BaseModel):
     """Config variables for the TTS output of captions."""
 
