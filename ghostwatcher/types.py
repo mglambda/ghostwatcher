@@ -83,14 +83,19 @@ class Summary(BaseModel):
     )
 
     content: str = Field(
+        default = "",
         description = "The summary of the events between the beginning timestamp and ending timestamp in the video."
     )
 
-class VideoSummaries(BaseModel):
+class SummaryBook(BaseModel):
     """Collection of summaries for a specific video file."""
 
-    summaries: List[Summary]
-    
+    summaries: List[Summary] = Field(
+        default_factory = list,
+        description = "Holds the summary data."
+    )
+
+
 class FrameCollection(BaseModel):
     """An ordered collection of image frames, with possible descriptions and metadata."""
 
@@ -101,6 +106,11 @@ class FrameCollection(BaseModel):
     frames: List[FrameImage] = Field(
         default_factory=list,
         description="The frames, in chronological order, that were extracted from the video.",
+    )
+
+    summary_book: SummaryBook = Field(
+        default_factory = SummaryBook,
+        description = "Container for the video summaries."
     )
 
     @staticmethod
@@ -205,7 +215,7 @@ class LLMConfig(BaseModel):
     )
 
     summary_batch_size: int = Field(
-        default = 10
+        default = 10,
         description = "How many frames to look at simultaneously when building summaries."
     )
 

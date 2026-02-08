@@ -42,6 +42,12 @@ def get_audio_duration(filepath: Path) -> Optional[float]:
         return None
 
 
+def summarize(frame_collection: FrameCollection, llm_config: LLMConfig, prog: Program) -> None:
+    """Modifies the frame collection to fill in summaries of batches of images.
+    The summaries are intended to help with the individual frame description."""
+    return
+
+    
 def describe_frames(
     frame_collection: FrameCollection, llm_config: LLMConfig, prog: Program
 ) -> FrameCollection:
@@ -499,6 +505,18 @@ def main() -> None:
     )
 
     parser.add_argument(
+        "--force-summary",
+        action = argparse.BooleanOptionalAction,
+        help = "Force generation of summaries, even if they already exist."
+    )
+
+    parser.add_argument(
+        "--skip-summary",
+        action = argparse.BooleanOptionalAction,
+        help = "Skip generation of summaries."
+    )
+
+    parser.add_argument(
         "--force-captions",
         action=argparse.BooleanOptionalAction,
         help="Force regeneration of captions for the tts overlay, even if they already exist.",
@@ -510,6 +528,14 @@ def main() -> None:
         default=LLMConfig.model_fields["batch_size"].default,
         help="How many images to describe in one batch. A higher batch size gives better results because the LLM will have more images in context simultaneously, but also requires substantially more memory and processing time.",
     )
+
+    parser.add_argument(
+        "--summary-batch-size",
+        type=int,
+        default=LLMConfig.model_fields["summary_batch_size"].default,
+        help=LLMConfig.model_fields["summary_batch_size"].description
+    )    
+    
     parser.add_argument(
         "--description-prompt",
         type=str,
@@ -525,14 +551,20 @@ def main() -> None:
     )
     args = parser.parse_args()
     # ensure logical consistency with the forcing
+    if args.skip_summary:
+        if args.force_summary:
+            raise RuntimeError(f"Cannot combine --force-summary with --skip-summary. Aborting.")
+    
     if args.force_frame_extraction:
         args.force_frame_description = True
+        args.force_summary = True
 
     if args.skip_frame_description:
         if args.force_frame_extraction:
             raise RuntimeError(
                 f"Aborted. Cannot combine --skip-frame-description with --force-frame-extraction. Pick one."
             )
+
 
         if args.force_frame_description:
             raise RuntimeError(
@@ -636,7 +668,46 @@ def main() -> None:
         f"Extracted {len(frame_collection.frames)} images from {frame_collection.video_filepath}."
     )
 
-    # 2. step: description generation
+    # 2. step: Describing Frames
+    # construct the llmconfig
+
+    # the description prompt has the following priority order
+    # command line arguments > character_folder var > default from LLMConfig
+    if args.description_prompt != LLMConfig.model_fields['description_prompt'].default:
+        # the user set the command line argument -> highest priority
+        description_prompt = args.description_prompt
+    elif (description_prompt_var := prog.box.get_var("description_prompt")) is not None:
+        # user kept thedefault -> is there a character folder var set?
+        description_prompt = description_prompt_var
+    else:
+        # use the default
+        description_prompt = LLMConfig.model_fields['description_prompt'].default
+
+    llm_config = LLMConfig(
+        batch_size=args.batch_size, summary_batch_size = args.summary_batch_size, description_prompt=description_prompt
+    )
+    logger.debug(f"LLM Configuration: {llm_config.model_dump_json(indent=2)}")
+    
+    
+    # 2.1 summarizing
+    if args.force_summary:
+        # null all existing summaries
+        logger.info("Forcing regeneration of summaries.")
+        frame_collection.summary_book = SummaryBook()
+
+    if args.skip_summary:
+        logger.info("Skipping summarization step due to --skip-summary.")
+    else:
+        # summary modifies the frame collection in place since it uses dictionaries a lot
+        summarize(frame_collection, llm_config, prog)
+        logger.info(f"Done summarizing with {len(frame_collection.summary_book.summaries)} summaries.")
+        
+    # for development, we output the summaries
+    print("=== summaries ===")
+    for summary in frame_collection.summary_book.summaries:
+        print(f"{summary.model_dump_json(indent=2)}")
+        
+    # 2.2: description generation
     if args.force_frame_description:
         logger.info(
             f"Ignoring previously generated frame descriptions (from --force-frame-description)."
@@ -649,23 +720,6 @@ def main() -> None:
         logger.info(f"Skipping generation of descriptions for extracted frames.")
         described_frame_collection = deepcopy(frame_collection)
     else:
-        # the description prompt has the following priority order
-        # command line arguments > character_folder var > default from LLMConfig
-        if args.description_prompt != LLMConfig.model_fields['description_prompt'].default:
-            # the user set the command line argument -> highest priority
-            description_prompt = args.description_prompt
-        elif (description_prompt_var := prog.box.get_var("description_prompt")) is not None:
-            # user kept thedefault -> is there a character folder var set?
-            description_prompt = description_prompt_var
-        else:
-            # use the default
-            description_prompt = LLMConfig.model_fields['description_prompt'].default
-            
-        llm_config = LLMConfig(
-            batch_size=args.batch_size, description_prompt=description_prompt
-        )
-        logger.debug(f"LLM Configuration: {llm_config.model_dump_json(indent=2)}")
-
         described_frame_collection = describe_frames(frame_collection, llm_config, prog)
         logger.info("Finished frame descriptions.")
 
